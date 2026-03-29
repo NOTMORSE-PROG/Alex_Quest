@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Alex's Quest",
+    "slug": "alexs-quest",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "alexsquest",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FDF8F0"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.alexsquest.app",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Alex's Quest uses speech recognition to help you practice English pronunciation.",
+        "NSMicrophoneUsageDescription": "Alex's Quest needs microphone access to listen to your spoken answers."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FDF8F0"
+      },
+      "package": "com.alexsquest.app",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Alex's Quest needs microphone access to listen to your spoken answers."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Alex's Quest needs microphone access to listen to your spoken answers.",
+          "speechRecognitionPermission": "Alex's Quest uses speech recognition to help you practice English pronunciation."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
