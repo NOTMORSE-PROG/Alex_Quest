@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { MotiView } from "moti";
+import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { colors, fonts } from "@/lib/theme";
@@ -41,6 +42,13 @@ export default function TutorialPage() {
 
   const isLast = step === STEPS.length - 1;
   const current = STEPS[step];
+
+  // Request mic permission when the user reaches the "Speak to Learn" slide
+  useEffect(() => {
+    if (step === 1) {
+      ExpoSpeechRecognitionModule.requestPermissionsAsync().catch(() => {});
+    }
+  }, [step]);
 
   const handleNext = () => {
     if (isLast) {

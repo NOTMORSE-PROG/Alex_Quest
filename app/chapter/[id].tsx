@@ -8,6 +8,7 @@ import { QuestionCard } from "@/components/gameplay/QuestionCard";
 import { SpeechInput } from "@/components/gameplay/SpeechInput";
 import { AnswerFeedback } from "@/components/gameplay/AnswerFeedback";
 import { RivalCharacter } from "@/components/gameplay/RivalCharacter";
+import { ChapterIntroScene } from "@/components/gameplay/ChapterIntroScene";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { FloatingXP } from "@/components/animations/FloatingXP";
 import { getChapter } from "@/lib/chaptersData";
@@ -30,25 +31,20 @@ export default function ChapterPage() {
   const { completeChapter, addXP, incrementWrongAttempts, resetWrongAttempts, wrongAttempts } = useGameStore();
   const speech = useSpeechRecognition();
 
+  const [introComplete, setIntroComplete] = useState(false);
   const [qIndex, setQIndex] = useState(0);
   const [feedback, setFeedback] = useState<boolean | null>(null);
   const [xpGain, setXpGain] = useState<number | null>(null);
   const [totalXP, setTotalXP] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
 
-  if (!chapter) {
-    return (
-      <View style={styles.error}>
-        <Text style={styles.errorText}>Chapter not found.</Text>
-      </View>
-    );
-  }
-
-  const questions = chapter.questions;
+  // Derive question data safely (may be undefined before chapter loads)
+  const questions = chapter?.questions ?? [];
   const currentQ = questions[qIndex];
   const isLast = qIndex === questions.length - 1;
 
   const handleAnswer = (answer: string) => {
+    if (!currentQ) return;
     const score = scoreAnswer(answer, currentQ.expectedAnswer);
     const correct = score >= 0.6;
 
@@ -89,7 +85,6 @@ export default function ChapterPage() {
     }
   };
 
-  // Handle multiple-choice / option buttons
   const handleOptionPress = (option: string) => {
     if (feedback !== null) return;
     playSFX("tap");
@@ -97,12 +92,25 @@ export default function ChapterPage() {
     handleAnswer(option);
   };
 
-  // Handle speech done
+  // useEffect MUST be before any early returns to keep hook order stable
   useEffect(() => {
-    if (speech.state === "done" && speech.transcript) {
+    if (speech.state === "done" && speech.transcript && introComplete) {
       handleAnswer(speech.transcript);
     }
   }, [speech.state, speech.transcript]);
+
+  // Early returns after all hooks
+  if (!chapter) {
+    return (
+      <View style={styles.error}>
+        <Text style={styles.errorText}>Chapter not found.</Text>
+      </View>
+    );
+  }
+
+  if (!introComplete) {
+    return <ChapterIntroScene chapter={chapter} onStart={() => setIntroComplete(true)} />;
+  }
 
   const isSpeakType = currentQ.type === "speak" || currentQ.type === "rival";
   const isChoiceType = currentQ.type === "choice" || currentQ.type === "build" || currentQ.type === "identify";
@@ -146,6 +154,7 @@ export default function ChapterPage() {
 
         <QuestionCard
           question={currentQ.prompt}
+          directions={currentQ.directions}
           hint={feedback === false ? currentQ.hint : undefined}
           questionNumber={qIndex + 1}
           total={questions.length}

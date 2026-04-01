@@ -3,11 +3,9 @@ import { MotiView } from "moti";
 import { colors } from "@/lib/theme";
 
 const BAR_CONFIGS = [
-  { minH: 8, maxH: 22, duration: 700 },
-  { minH: 14, maxH: 30, duration: 500 },
-  { minH: 20, maxH: 10, duration: 600 },
-  { minH: 12, maxH: 28, duration: 800 },
-  { minH: 18, maxH: 8, duration: 400 },
+  { minH: 8, maxH: 28, duration: 600 },
+  { minH: 16, maxH: 32, duration: 450 },
+  { minH: 10, maxH: 24, duration: 700 },
 ];
 
 interface Props {
@@ -21,13 +19,13 @@ export function WaveformVisualizer({ active = true, color = colors.sky }: Props)
       {BAR_CONFIGS.map((cfg, i) => (
         <MotiView
           key={i}
-          animate={{ height: active ? [cfg.minH, cfg.maxH, cfg.minH] : cfg.minH }}
+          animate={{ scaleY: active ? [cfg.minH / cfg.maxH, 1, cfg.minH / cfg.maxH] : cfg.minH / cfg.maxH }}
           transition={
             active
               ? { loop: true, duration: cfg.duration, type: "timing" }
               : { duration: 200 }
           }
-          style={[styles.bar, { backgroundColor: color }]}
+          style={[styles.bar, { backgroundColor: color, height: cfg.maxH }]}
         />
       ))}
     </View>

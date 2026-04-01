@@ -37,16 +37,13 @@ export function SpeechInput({ state, transcript, interimTranscript, onStart, onS
         style={styles.buttonWrapper}
       >
         <MotiView
-          animate={{
-            scale: isRecording ? [1, 1.05, 1] : 1,
-            backgroundColor: isRecording ? colors.danger : isProcessing ? colors.warning : colors.sky,
-          }}
+          animate={{ scale: isRecording ? [1, 1.05, 1] : 1 }}
           transition={
             isRecording
               ? { loop: true, duration: 800, type: "timing" }
               : { duration: 300 }
           }
-          style={styles.button}
+          style={[styles.button, { backgroundColor: isRecording ? colors.danger : isProcessing ? colors.warning : colors.sky }]}
         >
           {/* Pulse ring when recording */}
           {isRecording && (

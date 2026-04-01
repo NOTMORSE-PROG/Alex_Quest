@@ -4,12 +4,13 @@ import { colors, fonts, shadows } from "@/lib/theme";
 
 interface Props {
   question: string;
+  directions?: string;
   hint?: string;
   questionNumber: number;
   total: number;
 }
 
-export function QuestionCard({ question, hint, questionNumber, total }: Props) {
+export function QuestionCard({ question, directions, hint, questionNumber, total }: Props) {
   return (
     <MotiView
       from={{ opacity: 0, translateY: 20 }}
@@ -19,6 +20,12 @@ export function QuestionCard({ question, hint, questionNumber, total }: Props) {
     >
       <Text style={styles.counter}>{questionNumber} / {total}</Text>
       <Text style={styles.question}>{question}</Text>
+      {directions && (
+        <View style={styles.directionsBox}>
+          <Text style={styles.directionsLabel}>🧭 Directions</Text>
+          <Text style={styles.directions}>{directions}</Text>
+        </View>
+      )}
       {hint && <Text style={styles.hint}>💡 {hint}</Text>}
     </MotiView>
   );
@@ -44,6 +51,24 @@ const styles = StyleSheet.create({
     color: colors.navy,
     textAlign: "center",
     lineHeight: 30,
+  },
+  directionsBox: {
+    backgroundColor: `${colors.navy}0D`,
+    borderRadius: 12,
+    padding: 10,
+    width: "100%",
+  },
+  directionsLabel: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: `${colors.navy}88`,
+    marginBottom: 4,
+  },
+  directions: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 13,
+    color: `${colors.navy}BB`,
+    lineHeight: 19,
   },
   hint: {
     fontFamily: fonts.bodyRegular,

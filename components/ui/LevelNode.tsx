@@ -18,10 +18,7 @@ export function LevelNode({ label, icon, color, isUnlocked, isActive, stars, onP
   return (
     <Pressable onPress={isUnlocked ? onPress : undefined} style={styles.wrapper}>
       <MotiView
-        animate={{
-          scale: isActive ? [1, 1.06, 1] : 1,
-          shadowOpacity: isActive ? 0.8 : 0.2,
-        }}
+        animate={{ scale: isActive ? [1, 1.06, 1] : 1 }}
         transition={isActive ? { loop: true, duration: 1500, type: "timing" } : { duration: 300 }}
         style={[
           styles.node,

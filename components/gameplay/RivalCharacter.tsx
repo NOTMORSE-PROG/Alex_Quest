@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
 
-const RIVAL_EMOJIS = ["🦊", "🐸", "🐼", "🦁", "🐯"];
+const RIVAL_EMOJIS = ["🦨", "🐿️", "🐓", "🦉", "🦜"];
 
 interface Props {
   chapterId: number;
@@ -15,8 +15,9 @@ export function RivalCharacter({ chapterId, score = 0 }: Props) {
   return (
     <View style={styles.container}>
       <MotiView
-        animate={{ scale: [1, 1.04, 1], rotate: ["0deg", "2deg", "0deg", "-2deg", "0deg"] }}
-        transition={{ loop: true, duration: 3000, type: "timing" }}
+        from={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
       >
         <Text style={styles.emoji}>{emoji}</Text>
       </MotiView>

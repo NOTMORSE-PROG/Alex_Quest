@@ -33,14 +33,21 @@ export default function SplashScreen() {
         <Text style={styles.subtitle}>Learn English the fun way!</Text>
       </MotiView>
 
-      {/* Falling Alex */}
+      {/* Alex greeting entrance */}
       <MotiView
-        from={{ translateY: -200, opacity: 0 }}
-        animate={{ translateY: 0, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 80, damping: 12, delay: 400 }}
+        from={{ opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 300, duration: 500, type: "timing" }}
         style={styles.alexWrapper}
       >
-        <AlexCharacter mood="falling" variant="falling" />
+        <AlexCharacter mood="idle" variant="falling" />
+        <MotiView
+          from={{ opacity: 0, translateY: 8 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ delay: 700, duration: 400, type: "timing" }}
+        >
+          <Text style={styles.helloText}>Hello! 👋</Text>
+        </MotiView>
       </MotiView>
 
       {/* Loading dots */}
@@ -85,6 +92,15 @@ const styles = StyleSheet.create({
   },
   alexWrapper: {
     alignItems: "center",
+    gap: 8,
+  },
+  helloText: {
+    fontFamily: fonts.display,
+    fontSize: 22,
+    color: "white",
+    textShadowColor: "rgba(0,0,0,0.15)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   dots: {
     position: "absolute",

@@ -1,5 +1,4 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { MotiView } from "moti";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { GameHeader } from "@/components/ui/GameHeader";
@@ -15,27 +14,17 @@ export default function VocabularyPage() {
       <View style={[StyleSheet.absoluteFill, styles.bg]} />
       <GameHeader transparent />
 
-      <MotiView
-        from={{ opacity: 0, translateY: -12 }}
-        animate={{ opacity: 1, translateY: 0 }}
-        transition={{ duration: 400, type: "timing" }}
-        style={styles.header}
-      >
+      <View style={styles.header}>
         <Text style={styles.title}>📚 Vocabulary</Text>
         <Text style={styles.subtitle}>Words from Alex's journey</Text>
-      </MotiView>
+      </View>
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 90 }]}
         showsVerticalScrollIndicator={false}
       >
         {chapters.map((chapter, ci) => (
-          <MotiView
-            key={chapter.id}
-            from={{ opacity: 0, translateY: 20 }}
-            animate={{ opacity: 1, translateY: 0 }}
-            transition={{ delay: ci * 80, type: "spring", stiffness: 200, damping: 20 }}
-          >
+          <View key={chapter.id}>
             {/* Chapter header */}
             <View style={[styles.chapterHeader, { borderLeftColor: chapter.accentColorHex }]}>
               <Text style={styles.chapterEmoji}>{chapter.animalEmoji}</Text>
@@ -46,22 +35,16 @@ export default function VocabularyPage() {
             </View>
 
             {/* Vocab cards */}
-            {chapter.vocabulary.map((entry, vi) => (
-              <MotiView
+            {chapter.vocabulary.map((entry) => (
+              <VocabCard
                 key={entry.word}
-                from={{ opacity: 0, translateX: -16 }}
-                animate={{ opacity: 1, translateX: 0 }}
-                transition={{ delay: ci * 80 + vi * 60, type: "spring", stiffness: 200, damping: 20 }}
-              >
-                <VocabCard
-                  word={entry.word}
-                  translation={`${entry.phonetic} — ${entry.meaning}`}
-                  example={entry.storyUse}
-                  emoji={chapter.animalEmoji}
-                />
-              </MotiView>
+                word={entry.word}
+                translation={`${entry.phonetic} — ${entry.meaning}`}
+                example={entry.storyUse}
+                emoji={chapter.animalEmoji}
+              />
             ))}
-          </MotiView>
+          </View>
         ))}
       </ScrollView>
 

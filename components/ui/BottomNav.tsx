@@ -1,5 +1,5 @@
 import { Link, usePathname } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
@@ -19,7 +19,8 @@ export function BottomNav() {
       {navItems.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(item.href);
         return (
-          <Link key={item.href} href={item.href} style={styles.link}>
+          <Link key={item.href} href={item.href} asChild>
+            <Pressable style={styles.link}>
             <MotiView
               animate={{ scale: isActive ? 1 : 0.95 }}
               style={[styles.item, isActive && styles.itemActive]}
@@ -38,6 +39,7 @@ export function BottomNav() {
                 />
               )}
             </MotiView>
+            </Pressable>
           </Link>
         );
       })}

@@ -49,8 +49,9 @@ export default function QuestPage() {
       {["10%", "25%", "60%", "80%"].map((top, i) => (
         <MotiView
           key={i}
-          animate={{ opacity: [0.3, 1, 0.3] }}
-          transition={{ loop: true, duration: 2000 + i * 500, delay: i * 300, type: "timing" }}
+          from={{ opacity: 0 }}
+          animate={{ opacity: 0.65 }}
+          transition={{ delay: i * 150, duration: 600, type: "timing" }}
           style={[styles.star, { top: top as any, left: `${20 + i * 20}%` as any }]}
         >
           <Text style={{ color: "white", fontSize: 12 }}>✦</Text>

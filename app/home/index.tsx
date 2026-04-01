@@ -81,7 +81,7 @@ export default function HomePage() {
           />
           {!showBubble && (
             <MotiView
-              animate={{ opacity: [0.4, 0.9, 0.4] }}
+              animate={{ opacity: [0.75, 1, 0.75] }}
               transition={{ loop: true, duration: 2000, type: "timing" }}
               style={styles.tapHint}
             >
@@ -99,8 +99,9 @@ export default function HomePage() {
         >
           {!questStarted && (
             <MotiView
-              animate={{ translateY: [0, 6, 0] }}
-              transition={{ loop: true, duration: 1000, type: "timing" }}
+              from={{ opacity: 0, translateY: -8 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{ type: "spring", stiffness: 180, damping: 12, delay: 600 }}
               style={styles.arrowHint}
             >
               <Text style={{ fontSize: 24 }}>👇</Text>
@@ -109,17 +110,11 @@ export default function HomePage() {
           )}
 
           <Pressable onPress={handleQuestClick} style={styles.questBtn}>
-            <MotiView
-              animate={{
-                shadowOpacity: [0.4, 0.8, 0.4],
-              }}
-              transition={{ loop: true, duration: 2000, type: "timing" }}
-              style={styles.questBtnInner}
-            >
+            <View style={styles.questBtnInner}>
               <Text style={styles.questBtnText}>
                 {questStarted ? "Continue Quest 🗺️" : "Start Quest →"}
               </Text>
-            </MotiView>
+            </View>
           </Pressable>
         </MotiView>
       </View>
@@ -163,7 +158,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.display, fontSize: 26, color: "white" },
   subtitle: { fontFamily: fonts.body, fontSize: 14, color: "rgba(255,255,255,0.7)", marginTop: 2 },
   tapHint: { alignItems: "center", marginTop: -4 },
-  tapHintText: { fontFamily: fonts.body, fontSize: 12, color: "rgba(255,255,255,0.5)" },
+  tapHintText: { fontFamily: fonts.body, fontSize: 16, color: "white", textShadowColor: "rgba(0,0,0,0.2)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   questBlock: { alignItems: "center", gap: 12 },
   arrowHint: { alignItems: "center" },
   startHint: { fontFamily: fonts.body, fontSize: 12, color: "rgba(255,255,255,0.6)" },
@@ -179,7 +174,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   questBtnText: { fontFamily: fonts.display, fontSize: 20, color: "white" },
-  vocabBtn: { position: "absolute", bottom: 90, right: 16, zIndex: 20 },
+  vocabBtn: { position: "absolute", top: 100, right: 16, zIndex: 20 },
   vocabBtnInner: {
     flexDirection: "row",
     alignItems: "center",

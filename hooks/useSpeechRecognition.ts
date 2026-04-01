@@ -56,8 +56,8 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     const messages: Record<string, string> = {
       "no-speech": "No speech detected. Try again.",
       "not-allowed": "Microphone permission denied.",
-      "network": "Network error. Check your connection.",
       "speech-timeout": "No speech detected. Try again.",
+      "language-not-supported": "On-device English model not available on this device.",
     };
     setError(messages[event.error] ?? "Speech recognition error.");
     setState("error");
@@ -71,7 +71,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       setError(null);
       isRecordingRef.current = true;
       await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      ExpoSpeechRecognitionModule.start({ lang: "en-US", interimResults: true });
+      ExpoSpeechRecognitionModule.start({ lang: "en-US", interimResults: true, requiresOnDeviceRecognition: true });
     } catch {
       setError("Could not start speech recognition.");
       setState("error");
