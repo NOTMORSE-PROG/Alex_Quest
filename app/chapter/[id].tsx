@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
@@ -92,12 +92,14 @@ export default function ChapterPage() {
     handleAnswer(option);
   };
 
-  // useEffect MUST be before any early returns to keep hook order stable
+  const handleAnswerRef = useRef(handleAnswer);
+  handleAnswerRef.current = handleAnswer;
+
   useEffect(() => {
     if (speech.state === "done" && speech.transcript && introComplete) {
-      handleAnswer(speech.transcript);
+      handleAnswerRef.current(speech.transcript);
     }
-  }, [speech.state, speech.transcript]);
+  }, [speech.state, speech.transcript, introComplete]);
 
   // Early returns after all hooks
   if (!chapter) {

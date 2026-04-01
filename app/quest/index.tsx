@@ -52,7 +52,7 @@ export default function QuestPage() {
           from={{ opacity: 0 }}
           animate={{ opacity: 0.65 }}
           transition={{ delay: i * 150, duration: 600, type: "timing" }}
-          style={[styles.star, { top: top as any, left: `${20 + i * 20}%` as any }]}
+          style={[styles.star, { top: top, left: `${20 + i * 20}%` }]}
         >
           <Text style={{ color: "white", fontSize: 12 }}>✦</Text>
         </MotiView>

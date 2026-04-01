@@ -5,7 +5,6 @@ import { useGameStore } from "@/store/gameStore";
 
 interface Props {
   transparent?: boolean;
-  showBack?: boolean;
 }
 
 export function GameHeader({ transparent = false }: Props) {

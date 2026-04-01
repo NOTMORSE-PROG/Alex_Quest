@@ -10,7 +10,8 @@ import { useAudio } from "@/hooks/useAudio";
 import { useGameStore } from "@/store/gameStore";
 import { colors, fonts } from "@/lib/theme";
 
-const CLOUDS = [
+type CloudDef = { top: string; left?: string; right?: string; scale: number; delay: number };
+const CLOUDS: CloudDef[] = [
   { top: "8%", left: "5%", scale: 0.7, delay: 0 },
   { top: "15%", right: "8%", scale: 0.9, delay: 1000 },
   { top: "22%", left: "25%", scale: 0.6, delay: 2000 },
@@ -46,7 +47,7 @@ export default function HomePage() {
           key={i}
           animate={{ translateX: [0, 20, 0] }}
           transition={{ loop: true, duration: 6000 + i * 1000, delay: c.delay, type: "timing" }}
-          style={[styles.cloud, { top: c.top as any, left: (c as any).left, right: (c as any).right, transform: [{ scale: c.scale }] }]}
+          style={[styles.cloud, { top: c.top, left: c.left, right: c.right, transform: [{ scale: c.scale }] }]}
         >
           <Text style={{ fontSize: 36 }}>☁️</Text>
         </MotiView>

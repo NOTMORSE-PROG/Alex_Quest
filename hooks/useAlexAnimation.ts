@@ -1,4 +1,3 @@
-"use client";
 import { useState, useCallback, useRef } from "react";
 
 export type AlexMood = "idle" | "happy" | "worried" | "cheer" | "falling" | "thinking";
