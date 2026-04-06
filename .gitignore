@@ -42,3 +42,12 @@ nativewind-env.d.ts
 *.mobileprovision
 google-services.json
 GoogleService-Info.plist
+
+# backup files
+components/*.backup.tsx
+
+# large video assets (offline bundle)
+assets/videos/
+
+# PDFs
+*.pdf
