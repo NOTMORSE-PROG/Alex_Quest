@@ -49,5 +49,7 @@ components/*.backup.tsx
 # large video assets (offline bundle)
 assets/videos/
 
-# PDFs
+# PDFs and docs
 *.pdf
+*.doc
+*.docx
