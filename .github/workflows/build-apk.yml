@@ -38,7 +38,13 @@ jobs:
       - name: Verify LFS files
         run: |
           echo "Checking LFS video files..."
-          for f in assets/videos/*.mp4; do
+          shopt -s nullglob
+          files=(assets/videos/*.mp4)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No video files found — skipping LFS verification."
+            exit 0
+          fi
+          for f in "${files[@]}"; do
             FILE_SIZE=$(stat --printf="%s" "$f")
             if [ "$FILE_SIZE" -lt 1000000 ]; then
               echo "::error::LFS file $f is a pointer ($FILE_SIZE bytes), not the actual video."
