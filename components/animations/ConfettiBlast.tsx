@@ -19,10 +19,9 @@ export function ConfettiBlast({ fire = false }: Props) {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <ConfettiCannon
         ref={ref}
-        count={40}
+        count={15}
         origin={{ x: -10, y: 0 }}
         autoStart={false}
-        fadeOut
         colors={["#F5A623", "#4AADE8", "#58CC02", "#FF4B4B", "#8B5CF6"]}
       />
     </View>

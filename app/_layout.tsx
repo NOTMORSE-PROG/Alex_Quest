@@ -5,7 +5,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
-import { ScrollView, Text, View } from "react-native";
+import { AppState, ScrollView, Text, View } from "react-native";
+import { BadgeCelebration } from "@/components/ui/BadgeCelebration";
+import { flushPendingStorage } from "@/store/gameStore";
 import {
   Fredoka_400Regular,
 } from "@expo-google-fonts/fredoka";
@@ -57,6 +59,17 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  // Flush any pending debounced storage write when app goes to background,
+  // preventing data loss if the user force-quits before the 3s timer fires.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "background" || nextState === "inactive") {
+        flushPendingStorage();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   if (!fontsLoaded && !fontError) return null;
 
   return (
@@ -64,6 +77,7 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+          <BadgeCelebration />
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>

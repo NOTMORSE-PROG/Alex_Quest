@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
@@ -7,7 +8,7 @@ interface Props {
   problemSounds: ProblemSound[];
 }
 
-export function ProblemSounds({ problemSounds }: Props) {
+export const ProblemSounds = memo(function ProblemSounds({ problemSounds }: Props) {
   if (problemSounds.length === 0) return null;
 
   return (
@@ -41,7 +42,7 @@ export function ProblemSounds({ problemSounds }: Props) {
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

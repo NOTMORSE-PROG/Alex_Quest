@@ -1,6 +1,5 @@
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { MotiView } from "moti";
 import { fonts } from "@/lib/theme";
 import type { Chapter } from "@/lib/chaptersData";
 
@@ -19,22 +18,11 @@ export const StageNode = memo(function StageNode({ chapter, isUnlocked, isActive
     <View style={styles.container}>
       {/* Outer glow ring for active node */}
       {isActive && (
-        <MotiView
-          from={{ scale: 0.85, opacity: 0 }}
-          animate={{ scale: [1, 1.28, 1], opacity: [0.65, 0.15, 0.65] }}
-          transition={{ loop: true, duration: 2200, type: "timing" }}
-          style={[styles.glowRing, { borderColor: color }]}
-        />
+        <View style={[styles.glowRing, { borderColor: color }]} />
       )}
 
       <Pressable onPress={isUnlocked ? () => onPress(chapter) : undefined} hitSlop={8}>
-        <MotiView
-          animate={isActive ? { scale: [1, 1.08, 1] } : { scale: 1 }}
-          transition={
-            isActive
-              ? { loop: true, duration: 1800, type: "timing" }
-              : { duration: 300, type: "timing" }
-          }
+        <View
           style={[
             styles.node,
             isCompleted && { backgroundColor: color, borderColor: "#FBBF24", borderWidth: 4 },
@@ -62,19 +50,14 @@ export const StageNode = memo(function StageNode({ chapter, isUnlocked, isActive
               {chapter.id}
             </Text>
           </View>
-        </MotiView>
+        </View>
       </Pressable>
 
       {/* PLAY banner for current active node */}
       {isActive && !isCompleted && (
-        <MotiView
-          from={{ opacity: 0, translateY: 6 }}
-          animate={{ opacity: [0.85, 1, 0.85], translateY: 0 }}
-          transition={{ loop: true, duration: 1600, type: "timing" }}
-          style={[styles.playBanner, { backgroundColor: color }]}
-        >
+        <View style={[styles.playBanner, { backgroundColor: color }]}>
           <Text style={styles.playText}>▶ PLAY</Text>
-        </MotiView>
+        </View>
       )}
     </View>
   );

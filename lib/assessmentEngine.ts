@@ -375,14 +375,16 @@ export function assessAnswer(
   );
 
   // ── Overall score ──
-  const { contentWeight, pronunciationWeight, fluencyWeight, passThreshold } =
-    ASSESSMENT_CONFIG;
+  // overallScore is used for display/stats/badges — NOT for gating progression.
+  // passed is determined by contentScore only: if the student said the right
+  // words they advance, regardless of pronunciation quality.
+  const { contentWeight, pronunciationWeight, fluencyWeight } = ASSESSMENT_CONFIG;
   const overallScore = Math.round(
     contentScore * contentWeight +
       pronunciationScore * pronunciationWeight +
       fluencyScore * fluencyWeight
   );
-  const passed = overallScore >= passThreshold;
+  const passed = contentScore >= 80;
 
   // ── Problem sounds ──
   const problemSounds = extractProblemSounds(wordResults);
@@ -530,8 +532,7 @@ export function assessAnswerFallback(
     };
   });
 
-  const { contentWeight, pronunciationWeight, fluencyWeight, passThreshold } =
-    ASSESSMENT_CONFIG;
+  const { contentWeight, pronunciationWeight, fluencyWeight } = ASSESSMENT_CONFIG;
   const overallScore = Math.round(
     contentScore * contentWeight +
       pronunciationScore * pronunciationWeight +
@@ -545,7 +546,8 @@ export function assessAnswerFallback(
     contentScore,
     pronunciationScore,
     fluencyScore,
-    passed: overallScore >= passThreshold,
+    // Content gates progression — student passes if they said the right words.
+    passed: contentScore >= 80,
     wordResults,
     contentFeedback,
     pronunciationFeedback:

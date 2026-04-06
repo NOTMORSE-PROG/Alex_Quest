@@ -1,15 +1,14 @@
 import { memo } from "react";
 import { Dimensions, StyleSheet, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import { MotiView } from "moti";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
 const CLOUDS = [
-  { startX: -80, y: 180,  width: 90,  duration: 28000, delay: 0,     opacity: 0.22 },
-  { startX: -60, y: 550,  width: 70,  duration: 34000, delay: 6000,  opacity: 0.18 },
-  { startX: -50, y: 960,  width: 80,  duration: 30000, delay: 12000, opacity: 0.20 },
-  { startX: -70, y: 1400, width: 65,  duration: 38000, delay: 18000, opacity: 0.16 },
+  { x: SCREEN_W * 0.15, y: 180,  width: 90,  opacity: 0.22 },
+  { x: SCREEN_W * 0.55, y: 550,  width: 70,  opacity: 0.18 },
+  { x: SCREEN_W * 0.30, y: 960,  width: 80,  opacity: 0.20 },
+  { x: SCREEN_W * 0.70, y: 1400, width: 65,  opacity: 0.16 },
 ];
 
 function CloudShape({ width }: { width: number }) {
@@ -39,20 +38,12 @@ export const MapClouds = memo(function MapClouds() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {CLOUDS.map((cloud, i) => (
-        <MotiView
+        <View
           key={i}
-          from={{ translateX: cloud.startX }}
-          animate={{ translateX: SCREEN_W + cloud.width + 20 }}
-          transition={{
-            loop: true,
-            duration: cloud.duration,
-            delay: cloud.delay,
-            type: "timing",
-          }}
-          style={[styles.cloud, { top: cloud.y, opacity: cloud.opacity }]}
+          style={[styles.cloud, { top: cloud.y, left: cloud.x, opacity: cloud.opacity }]}
         >
           <CloudShape width={cloud.width} />
-        </MotiView>
+        </View>
       ))}
     </View>
   );

@@ -27,7 +27,9 @@
       },
       "package": "com.alexsquest.app",
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -40,21 +42,23 @@
       "expo-font",
       "expo-dev-client",
       [
-        "expo-av",
-        {
-          "microphonePermission": "Alex's Quest needs microphone access to listen to your spoken answers."
-        }
-      ],
-      [
         "expo-speech-recognition",
         {
           "microphonePermission": "Alex's Quest needs microphone access to listen to your spoken answers.",
           "speechRecognitionPermission": "Alex's Quest uses speech recognition to help you practice English pronunciation."
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3e6aff86-ace4-4474-a553-6fd984405fa6"
+      }
     }
   }
 }

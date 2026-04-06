@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
@@ -36,7 +37,7 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
   );
 }
 
-export function ScoreBars({
+export const ScoreBars = memo(function ScoreBars({
   contentScore,
   pronunciationScore,
   fluencyScore,
@@ -48,7 +49,7 @@ export function ScoreBars({
       <ScoreBar label="Fluency" score={fluencyScore} />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

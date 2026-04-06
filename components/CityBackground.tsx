@@ -11,75 +11,11 @@ import Svg, {
   Line,
 } from "react-native-svg";
 
-// Window grid helper
-function BuildingWindows({
-  bx,
-  by,
-  bw,
-  bh,
-  cols,
-  rows,
-  padX = 6,
-  padY = 18,
-  winW = 7,
-  winH = 5,
-  offPattern,
-  litColor = "rgba(144,202,249,0.55)",
-  darkColor = "rgba(20,55,100,0.5)",
-}: {
-  bx: number;
-  by: number;
-  bw: number;
-  bh: number;
-  cols: number;
-  rows: number;
-  padX?: number;
-  padY?: number;
-  winW?: number;
-  winH?: number;
-  offPattern?: Set<string>;
-  litColor?: string;
-  darkColor?: string;
-}) {
-  const gapX = (bw - padX * 2 - cols * winW) / Math.max(cols - 1, 1);
-  const gapY = (bh - padY * 2 - rows * winH) / Math.max(rows - 1, 1);
-  const windows: React.ReactElement[] = [];
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const key = `${r}-${c}`;
-      const isOff = offPattern?.has(key);
-      const wx = bx + padX + c * (winW + gapX);
-      const wy = by + padY + r * (winH + gapY);
-      windows.push(
-        <Rect
-          key={key}
-          x={wx}
-          y={wy}
-          width={winW}
-          height={winH}
-          rx={1}
-          fill={isOff ? darkColor : litColor}
-        />
-      );
-    }
-  }
-  return <>{windows}</>;
-}
-
 export const CityBackground = React.memo(function CityBackground() {
   const { width, height } = useWindowDimensions();
 
   const VW = 390;
   const VH = 844;
-
-  // Off-patterns for each building
-  const offL1 = new Set(["1-0","3-2","5-1","8-0","11-2","4-3","7-1","2-2"]);
-  const offL2 = new Set(["0-1","2-3","5-0","8-2","11-4","3-4","14-2","17-1","4-0","9-3","6-1","12-3"]);
-  const offL3 = new Set(["1-1","3-0","5-2","7-1","2-2","9-0"]);
-  const offR1 = new Set(["2-0","4-2","7-0","10-1","5-3","8-2","1-1","3-3"]);
-  const offR2 = new Set(["1-3","3-0","6-4","8-1","12-2","2-0","15-3","4-2","10-4","7-3","13-0"]);
-  const offR3 = new Set(["0-1","2-2","4-0","6-1","8-2","3-1","5-0","7-2"]);
 
   return (
     <Svg
@@ -248,14 +184,6 @@ export const CityBackground = React.memo(function CityBackground() {
       {Array.from({ length: 16 }, (_, i) => (
         <Line key={`l3f-${i}`} x1={126} y1={90 + i * 34} x2={164} y2={90 + i * 34} stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
       ))}
-      <BuildingWindows
-        bx={126} by={90} bw={38} bh={550}
-        cols={2} rows={14}
-        padX={5} padY={14} winW={9} winH={5}
-        offPattern={offL3}
-        litColor="rgba(170,210,240,0.45)"
-        darkColor="rgba(40,60,80,0.45)"
-      />
       {/* Setback top */}
       <Rect x={130} y={90} width={30} height={18} rx={1} fill="#7A8A98" />
       {/* Rooftop equipment */}
@@ -271,14 +199,6 @@ export const CityBackground = React.memo(function CityBackground() {
       {Array.from({ length: 22 }, (_, i) => (
         <Line key={`l2f-${i}`} x1={60} y1={10 + i * 29} x2={124} y2={10 + i * 29} stroke="rgba(255,255,255,0.10)" strokeWidth={0.6} />
       ))}
-      <BuildingWindows
-        bx={60} by={10} bw={64} bh={630}
-        cols={4} rows={20}
-        padX={6} padY={14} winW={8} winH={6}
-        offPattern={offL2}
-        litColor="rgba(144,202,249,0.52)"
-        darkColor="rgba(14,48,88,0.52)"
-      />
       {/* Sun glare on upper glass */}
       <Rect x={62} y={10} width={22} height={80} rx={2} fill="rgba(255,255,255,0.22)" />
       <Rect x={62} y={10} width={8} height={160} rx={1} fill="rgba(255,255,255,0.10)" />
@@ -298,14 +218,6 @@ export const CityBackground = React.memo(function CityBackground() {
         <Line key={`l1f-${i}`} x1={0} y1={48 + i * 31} x2={58} y2={48 + i * 31} stroke="rgba(0,0,0,0.08)" strokeWidth={0.5} />
       ))}
       {/* Brownstone windows — warm lit */}
-      <BuildingWindows
-        bx={0} by={48} bw={58} bh={592}
-        cols={3} rows={16}
-        padX={5} padY={16} winW={8} winH={6}
-        offPattern={offL1}
-        litColor="rgba(255,230,180,0.48)"
-        darkColor="rgba(60,45,30,0.5)"
-      />
       {/* Cornice at top */}
       <Rect x={0} y={44} width={58} height={6} rx={1} fill="#8A7A62" />
       <Rect x={0} y={40} width={58} height={5} rx={1} fill="#7A6A52" />
@@ -333,14 +245,6 @@ export const CityBackground = React.memo(function CityBackground() {
       {Array.from({ length: 16 }, (_, i) => (
         <Line key={`r3f-${i}`} x1={226} y1={75 + i * 35} x2={266} y2={75 + i * 35} stroke="rgba(0,0,0,0.06)" strokeWidth={0.5} />
       ))}
-      <BuildingWindows
-        bx={226} by={75} bw={40} bh={565}
-        cols={2} rows={14}
-        padX={5} padY={16} winW={9} winH={6}
-        offPattern={offR3}
-        litColor="rgba(230,210,180,0.50)"
-        darkColor="rgba(80,65,45,0.45)"
-      />
       {/* Decorative top — arched cornice */}
       <Rect x={226} y={71} width={40} height={6} rx={1} fill="#BCA88E" />
       <Rect x={230} y={65} width={32} height={8} rx={2} fill="#B09A80" />
@@ -354,14 +258,6 @@ export const CityBackground = React.memo(function CityBackground() {
       {Array.from({ length: 22 }, (_, i) => (
         <Line key={`r2f-${i}`} x1={270} y1={5 + i * 29} x2={332} y2={5 + i * 29} stroke="rgba(255,255,255,0.09)" strokeWidth={0.6} />
       ))}
-      <BuildingWindows
-        bx={270} by={5} bw={62} bh={635}
-        cols={4} rows={20}
-        padX={6} padY={14} winW={8} winH={6}
-        offPattern={offR2}
-        litColor="rgba(144,202,249,0.50)"
-        darkColor="rgba(14,48,88,0.50)"
-      />
       {/* Sun glare */}
       <Rect x={272} y={5} width={20} height={75} rx={2} fill="rgba(255,255,255,0.20)" />
       <Rect x={272} y={5} width={8} height={150} rx={1} fill="rgba(255,255,255,0.09)" />
@@ -379,14 +275,6 @@ export const CityBackground = React.memo(function CityBackground() {
       {Array.from({ length: 18 }, (_, i) => (
         <Line key={`r1f-${i}`} x1={336} y1={55 + i * 32} x2={390} y2={55 + i * 32} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
       ))}
-      <BuildingWindows
-        bx={336} by={55} bw={54} bh={585}
-        cols={3} rows={15}
-        padX={6} padY={16} winW={8} winH={5}
-        offPattern={offR1}
-        litColor="rgba(160,200,230,0.42)"
-        darkColor="rgba(30,50,70,0.48)"
-      />
       {/* Flat top with water tower silhouette */}
       <Rect x={336} y={51} width={54} height={6} rx={1} fill="#4A5A6A" />
       <Rect x={356} y={38} width={14} height={16} rx={1} fill="#3A4A5A" />

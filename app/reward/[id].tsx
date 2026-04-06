@@ -8,7 +8,6 @@ import { ConfettiBlast } from "@/components/animations/ConfettiBlast";
 import { getChapter } from "@/lib/chaptersData";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { useAudio } from "@/hooks/useAudio";
-import { BadgeToast } from "@/components/ui/BadgeToast";
 import { colors, fonts } from "@/lib/theme";
 import { toIPA } from "@/lib/phonemeData";
 import { getScoreTier } from "@/lib/config";
@@ -77,8 +76,6 @@ export default function RewardPage() {
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.navy, opacity: 0.6 }]} />
 
       <ConfettiBlast fire={showConfetti} />
-      <BadgeToast />
-
       <ScrollView contentContainerStyle={styles.content}>
         {/* Alex celebrating */}
         <MotiView
@@ -165,7 +162,7 @@ export default function RewardPage() {
       >
         {hasNext && (
           <Pressable
-            onPress={() => { playSFX("click"); router.replace("/map"); }}
+            onPress={() => { playSFX("click"); router.replace(`/lesson/${chapterId + 1}`); }}
             style={styles.nextBtn}
           >
             <Text style={styles.nextBtnText}>Continue to Stage {chapterId + 1} →</Text>

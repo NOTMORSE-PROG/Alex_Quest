@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { fonts } from "@/lib/theme";
 import { useGameStore } from "@/store/gameStore";
 
@@ -10,6 +11,7 @@ interface Props {
 export function GameHeader({ transparent = false }: Props) {
   const insets = useSafeAreaInsets();
   const streak = useGameStore((s) => s.streak);
+  const router = useRouter();
 
   return (
     <View
@@ -19,8 +21,13 @@ export function GameHeader({ transparent = false }: Props) {
         transparent && styles.transparent,
       ]}
     >
-      {/* Streak */}
-      <Text style={styles.streakText}>🔥 {streak}</Text>
+      {/* Streak — long-press (3s) opens teacher assessment */}
+      <Pressable
+        onLongPress={() => router.push("/teacher/pin")}
+        delayLongPress={3000}
+      >
+        <Text style={styles.streakText}>🔥 {streak}</Text>
+      </Pressable>
     </View>
   );
 }

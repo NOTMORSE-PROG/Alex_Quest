@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { Audio } from "expo-av";
@@ -6,7 +6,6 @@ import { colors, fonts, shadows } from "@/lib/theme";
 import { getScoreTier } from "@/lib/config";
 import type { AssessmentResult } from "@/types/assessment";
 import { ScoreGauge } from "./ScoreGauge";
-import { ScoreBars } from "./ScoreBars";
 import { PhonemeBreakdown } from "./PhonemeBreakdown";
 import { ProblemSounds } from "./ProblemSounds";
 
@@ -20,7 +19,15 @@ interface Props {
   isLastQuestion?: boolean;
 }
 
-export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListen, onNext, isLastQuestion }: Props) {
+export const AnswerFeedback = memo(function AnswerFeedback({
+  result,
+  hint,
+  recordingUri,
+  onTryAgain,
+  onListen,
+  onNext,
+  isLastQuestion,
+}: Props) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -28,7 +35,6 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
     if (!recordingUri || isPlaying) return;
     try {
       setIsPlaying(true);
-      // Unload previous sound
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
@@ -49,11 +55,11 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
 
   if (!result) return null;
 
+  const { passed, pronunciationScore } = result;
   const isSimple = result.source === "simple";
-  const { passed, overallScore } = result;
-  const tier = getScoreTier(overallScore);
+  const pronTier = getScoreTier(pronunciationScore);
 
-  // Simplified card for identify (YES/NO) questions — no scores or phoneme breakdown
+  // ── Simple card for identify (YES/NO) questions ──────────────────
   if (isSimple) {
     return (
       <MotiView
@@ -63,14 +69,14 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
         style={[styles.container, passed ? styles.passedBorder : styles.failedBorder, shadows.card]}
       >
         <Text style={[styles.simpleResultText, passed ? styles.simplePass : styles.simpleFail]}>
-          {passed ? "Correct!" : result.description}
+          {passed ? "✓ Correct!" : result.description}
         </Text>
 
-        {!passed && hint ? (
+        {!passed && hint && (
           <View style={styles.hintBox}>
             <Text style={styles.hintText}>{hint}</Text>
           </View>
-        ) : null}
+        )}
 
         {!passed && (
           <View style={styles.actions}>
@@ -95,12 +101,15 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
           </Pressable>
         )}
 
-        <Text style={styles.encouragement}>
-          {result.reflection.encouragement}
-        </Text>
+        <Text style={styles.encouragement}>{result.reflection.encouragement}</Text>
       </MotiView>
     );
   }
+
+  // ── Full card: dual-track (content + pronunciation) ──────────────
+  const hasPronunciationDetail =
+    result.wordResults.length > 0 &&
+    result.wordResults.some((w) => w.phonemes.length > 0);
 
   return (
     <MotiView
@@ -109,38 +118,45 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
       transition={{ type: "spring", stiffness: 250, damping: 20 }}
       style={[styles.container, passed ? styles.passedBorder : styles.failedBorder, shadows.card]}
     >
-      {/* Score Gauge + Tier Label */}
-      <View style={styles.headerRow}>
-        <ScoreGauge score={overallScore} size={90} />
-        <View style={styles.headerText}>
-          <Text style={styles.tierLabel}>
-            {tier.emoji} {tier.label}
+      {/* ── TRACK 1: Content result ── */}
+      <View style={[styles.contentBanner, passed ? styles.contentBannerPass : styles.contentBannerFail]}>
+        <Text style={[styles.contentBannerIcon, passed ? styles.contentIconPass : styles.contentIconFail]}>
+          {passed ? "✓" : "✗"}
+        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.contentBannerLabel, passed ? styles.contentLabelPass : styles.contentLabelFail]}>
+            {passed ? "Correct answer!" : "Not quite right"}
           </Text>
-          <Text style={styles.description}>{result.description}</Text>
+          <Text style={styles.contentFeedbackText}>{result.contentFeedback}</Text>
         </View>
       </View>
 
-      {/* Sub-score bars (only on fail — keep success feedback brief) */}
-      {!passed && (
-        <ScoreBars
-          contentScore={result.contentScore}
-          pronunciationScore={result.pronunciationScore}
-          fluencyScore={result.fluencyScore}
-        />
-      )}
-
-      {/* Phoneme Breakdown */}
-      {result.wordResults.length > 0 &&
-        result.wordResults.some((w) => w.phonemes.length > 0) && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your pronunciation</Text>
-            <PhonemeBreakdown wordResults={result.wordResults} />
+      {/* ── TRACK 2: Pronunciation coaching ── */}
+      {result.source !== "fallback-local" && (
+        <View style={styles.pronSection}>
+          <View style={styles.pronHeader}>
+            <ScoreGauge score={pronunciationScore} size={72} />
+            <View style={styles.pronHeaderText}>
+              <Text style={styles.pronSectionTitle}>Your pronunciation</Text>
+              <Text style={[styles.pronTierLabel, { color: pronTier.color }]}>
+                {pronTier.emoji} {pronTier.label}
+              </Text>
+              {result.pronunciationFeedback ? (
+                <Text style={styles.pronFeedbackText}>{result.pronunciationFeedback}</Text>
+              ) : null}
+            </View>
           </View>
-        )}
 
-      {/* Problem Sounds */}
-      {!passed && result.problemSounds.length > 0 && (
-        <ProblemSounds problemSounds={result.problemSounds} />
+          {/* Phoneme Breakdown */}
+          {hasPronunciationDetail && (
+            <PhonemeBreakdown wordResults={result.wordResults} />
+          )}
+
+          {/* Problem Sounds — always show if any (even on pass, as coaching) */}
+          {result.problemSounds.length > 0 && (
+            <ProblemSounds problemSounds={result.problemSounds} />
+          )}
+        </View>
       )}
 
       {/* Reflection: Strengths */}
@@ -150,47 +166,41 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
             {passed ? "Well done" : "What you did well"}
           </Text>
           {result.reflection.strengths.map((s, i) => (
-            <Text key={i} style={styles.bulletItem}>
-              {"\u2022"} {s}
-            </Text>
+            <Text key={i} style={styles.bulletItem}>• {s}</Text>
           ))}
         </View>
       )}
 
-      {/* Reflection: Areas to Improve (only on fail) */}
+      {/* Areas to Improve — only on fail */}
       {!passed && result.reflection.areasToImprove.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>How to improve</Text>
           {result.reflection.areasToImprove.map((a, i) => (
-            <Text key={i} style={styles.bulletItem}>
-              {"\u2022"} {a}
-            </Text>
+            <Text key={i} style={styles.bulletItem}>• {a}</Text>
           ))}
         </View>
       )}
 
-      {/* Practice Exercise (only on fail) */}
+      {/* Practice Exercise — only on fail */}
       {!passed && result.reflection.practiceExercise ? (
         <View style={styles.practiceBox}>
           <Text style={styles.practiceLabel}>Try this:</Text>
-          <Text style={styles.practiceText}>
-            {result.reflection.practiceExercise}
-          </Text>
+          <Text style={styles.practiceText}>{result.reflection.practiceExercise}</Text>
         </View>
       ) : null}
 
-      {/* Hint (escalating, from question data) */}
-      {!passed && hint ? (
+      {/* Hint — only on fail */}
+      {!passed && hint && (
         <View style={styles.hintBox}>
           <Text style={styles.hintText}>{hint}</Text>
         </View>
-      ) : null}
+      )}
 
-      {/* Hear yourself playback — always visible when recording exists */}
+      {/* Hear yourself playback */}
       {recordingUri && (
         <Pressable onPress={handlePlayback} disabled={isPlaying} style={styles.playbackBtn}>
           <Text style={styles.playbackText}>
-            {isPlaying ? "Playing..." : "Hear yourself"}
+            {isPlaying ? "Playing…" : "🎙 Hear yourself"}
           </Text>
         </Pressable>
       )}
@@ -211,7 +221,7 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
         </View>
       )}
 
-      {/* Next / Finish button — only on pass */}
+      {/* Next / Finish button — content gates this */}
       {passed && onNext && (
         <Pressable onPress={onNext} style={styles.nextBtn}>
           <Text style={styles.nextBtnText}>
@@ -220,13 +230,10 @@ export function AnswerFeedback({ result, hint, recordingUri, onTryAgain, onListe
         </Pressable>
       )}
 
-      {/* Encouragement */}
-      <Text style={styles.encouragement}>
-        {result.reflection.encouragement}
-      </Text>
+      <Text style={styles.encouragement}>{result.reflection.encouragement}</Text>
     </MotiView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -234,37 +241,95 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     gap: 14,
+    backgroundColor: "#FFFFFF",
   },
   passedBorder: {
-    backgroundColor: "#FFFFFF",
     borderWidth: 2,
     borderColor: colors.success,
   },
   failedBorder: {
-    backgroundColor: "#FFFFFF",
     borderWidth: 2,
     borderColor: colors.warning,
   },
-  headerRow: {
+
+  // ── Track 1: Content banner ──
+  contentBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 12,
+    padding: 12,
+  },
+  contentBannerPass: {
+    backgroundColor: `${colors.success}15`,
+  },
+  contentBannerFail: {
+    backgroundColor: `${colors.warning}12`,
+  },
+  contentBannerIcon: {
+    fontSize: 22,
+    fontFamily: fonts.body,
+  },
+  contentIconPass: {
+    color: colors.success,
+  },
+  contentIconFail: {
+    color: colors.warning,
+  },
+  contentBannerLabel: {
+    fontFamily: fonts.body,
+    fontSize: 15,
+    marginBottom: 2,
+  },
+  contentLabelPass: {
+    color: colors.success,
+  },
+  contentLabelFail: {
+    color: colors.navy,
+  },
+  contentFeedbackText: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 13,
+    color: `${colors.navy}BB`,
+    lineHeight: 18,
+  },
+
+  // ── Track 2: Pronunciation section ──
+  pronSection: {
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: `${colors.navy}0F`,
+    paddingTop: 12,
+  },
+  pronHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  headerText: {
+  pronHeaderText: {
     flex: 1,
+    gap: 2,
   },
-  tierLabel: {
+  pronSectionTitle: {
     fontFamily: fonts.body,
-    fontSize: 18,
-    color: colors.navy,
-    marginBottom: 4,
-  },
-  description: {
-    fontFamily: fonts.bodyRegular,
     fontSize: 13,
-    color: `${colors.navy}CC`,
-    lineHeight: 18,
+    color: `${colors.navy}99`,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
+  pronTierLabel: {
+    fontFamily: fonts.body,
+    fontSize: 16,
+  },
+  pronFeedbackText: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12,
+    color: `${colors.navy}99`,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+
+  // ── Common ──
   section: {
     gap: 4,
   },

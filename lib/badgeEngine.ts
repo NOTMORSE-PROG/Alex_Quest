@@ -76,9 +76,12 @@ function checkCondition(c: BadgeCondition, state: GameState): boolean {
     }
 
     case "problem_phonemes_zero":
-      return (
-        CHAPTER_IDS.some((id) => progress[id].completed) &&
-        state.problemPhonemes.length === 0
+      // Check if any completed chapter was finished with zero problem phonemes.
+      // Uses the per-chapter snapshot captured at completeChapter() time.
+      return CHAPTER_IDS.some(
+        (id) =>
+          progress[id].completed &&
+          (progress[id].problemPhonemes?.length ?? 1) === 0
       );
 
     default:

@@ -27,16 +27,18 @@ export const ASSESSMENT_CONFIG: AssessmentConfig = {
 
 /**
  * Whisper confidence → pronunciation score mapping curve.
- * Tuned for children's speech. Ship conservative, adjust with real data.
+ * Shifted up ~8 points for child speech — Whisper typically outputs 0.70-0.85
+ * for clear child speech, so we need higher scores in that range to avoid
+ * unfairly penalizing good pronunciation attempts.
  */
 export function confidenceToPronunciationScore(confidence: number): number {
   if (confidence >= 0.95) return 95 + (confidence - 0.95) * 100; // 95-100
-  if (confidence >= 0.90) return 88 + (confidence - 0.90) * 140; // 88-95
-  if (confidence >= 0.85) return 82 + (confidence - 0.85) * 120; // 82-88
-  if (confidence >= 0.80) return 75 + (confidence - 0.80) * 140; // 75-82
-  if (confidence >= 0.70) return 65 + (confidence - 0.70) * 100; // 65-75
-  if (confidence >= 0.60) return 55 + (confidence - 0.60) * 100; // 55-65
-  return Math.max(20, confidence * 90); // 20-54
+  if (confidence >= 0.90) return 90 + (confidence - 0.90) * 100; // 90-95
+  if (confidence >= 0.85) return 83 + (confidence - 0.85) * 140; // 83-90
+  if (confidence >= 0.75) return 72 + (confidence - 0.75) * 110; // 72-83
+  if (confidence >= 0.65) return 62 + (confidence - 0.65) * 100; // 62-72
+  if (confidence >= 0.55) return 50 + (confidence - 0.55) * 120; // 50-62
+  return Math.max(20, confidence * 90);                            // 20-49
 }
 
 /**

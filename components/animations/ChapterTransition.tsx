@@ -20,7 +20,7 @@ export function ChapterTransition({ visible, label, bgColor = colors.navy }: Pro
         <MotiView
           from={{ scale: 0.6, opacity: 0 }}
           animate={visible ? { scale: 1, opacity: 1 } : { scale: 0.6, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 200, damping: 18, delay: 150 }}
+          transition={{ type: "timing", duration: 200, delay: 150 }}
         >
           <Text style={styles.label}>{label}</Text>
         </MotiView>

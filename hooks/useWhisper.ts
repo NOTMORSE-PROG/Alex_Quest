@@ -194,7 +194,7 @@ export function useWhisper(): WhisperState {
         tdrzEnable: false,
         temperature: 0,
         temperatureInc: 0,
-        beamSize: 5,
+        beamSize: 1,
         noSpeechThold: 0.4,
         logprobThold: -0.7,
         suppressNonSpeechTokens: true,

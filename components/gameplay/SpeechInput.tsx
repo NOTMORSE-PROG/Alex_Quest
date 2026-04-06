@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
 import { WaveformVisualizer } from "@/components/animations/WaveformVisualizer";
 import type { SpeechState } from "@/hooks/useSpeechRecognition";
@@ -47,28 +46,13 @@ export function SpeechInput({ state, transcript, interimTranscript, onStart, onS
         disabled={isProcessing}
         style={styles.buttonWrapper}
       >
-        <MotiView
-          animate={{ scale: isRecording ? [1, 1.05, 1] : 1 }}
-          transition={
-            isRecording
-              ? { loop: true, duration: 800, type: "timing" }
-              : { duration: 300 }
-          }
+        <View
           style={[styles.button, { backgroundColor: isRecording ? colors.danger : isProcessing ? colors.warning : colors.sky }]}
         >
-          {/* Pulse ring when recording */}
-          {isRecording && (
-            <MotiView
-              from={{ scale: 1, opacity: 0.8 }}
-              animate={{ scale: 1.6, opacity: 0 }}
-              transition={{ loop: true, duration: 1200, type: "timing" }}
-              style={[StyleSheet.absoluteFill, styles.pulseRing]}
-            />
-          )}
           <Text style={styles.micIcon}>
             {isRecording ? "⏹️" : isProcessing ? "⏳" : "🎤"}
           </Text>
-        </MotiView>
+        </View>
       </Pressable>
 
       {isRecording && (
@@ -133,11 +117,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 8,
-  },
-  pulseRing: {
-    borderRadius: 40,
-    borderWidth: 3,
-    borderColor: colors.danger,
   },
   micIcon: {
     fontSize: 30,

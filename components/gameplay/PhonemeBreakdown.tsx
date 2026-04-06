@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
@@ -82,7 +82,7 @@ function PhonemePill({
   );
 }
 
-export function PhonemeBreakdown({ wordResults }: Props) {
+export const PhonemeBreakdown = memo(function PhonemeBreakdown({ wordResults }: Props) {
   let pillIndex = 0;
 
   return (
@@ -106,7 +106,7 @@ export function PhonemeBreakdown({ wordResults }: Props) {
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

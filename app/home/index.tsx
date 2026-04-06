@@ -6,7 +6,6 @@ import { AlexCharacter } from "@/components/AlexCharacter";
 import { CityBackground } from "@/components/CityBackground";
 import { GameHeader } from "@/components/ui/GameHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
-import { BadgeToast } from "@/components/ui/BadgeToast";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
 import { useAudio } from "@/hooks/useAudio";
 import { useGameStore } from "@/store/gameStore";
@@ -72,13 +71,9 @@ export default function HomePage() {
             onClick={handleAlexTap}
           />
           {!showBubble && (
-            <MotiView
-              animate={{ opacity: [0.75, 1, 0.75] }}
-              transition={{ loop: true, duration: 2000, type: "timing" }}
-              style={styles.tapHint}
-            >
+            <View style={styles.tapHint}>
               <Text style={styles.tapHintText}>Tap Alex! 👆</Text>
-            </MotiView>
+            </View>
           )}
         </MotiView>
 
@@ -131,7 +126,6 @@ export default function HomePage() {
         </Pressable>
       </MotiView>
 
-      <BadgeToast />
       <BottomNav />
     </View>
   );

@@ -5,7 +5,6 @@ import { colors, fonts } from "@/lib/theme";
 import { useGameStore } from "@/store/gameStore";
 import { badges } from "@/lib/badgesData";
 import { BadgeCard } from "@/components/ui/BadgeCard";
-import { BadgeToast } from "@/components/ui/BadgeToast";
 import { GameHeader } from "@/components/ui/GameHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
 import type { BadgeCategory } from "@/types/badges";
@@ -109,7 +108,6 @@ export default function BadgesPage() {
         }
       />
 
-      <BadgeToast />
       <BottomNav />
     </View>
   );

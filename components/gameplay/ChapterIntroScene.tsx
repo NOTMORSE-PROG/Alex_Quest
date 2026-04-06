@@ -51,14 +51,11 @@ export function ChapterIntroScene({ chapter, onStart }: Props) {
           )}
         </AnimatePresence>
 
-        {/* Animated animal character */}
+        {/* Animal character */}
         <Pressable onPress={() => setShowContinuation((v) => !v)}>
-          <MotiView
-            animate={{ translateY: [0, -10, 0] }}
-            transition={{ loop: true, duration: 2200, type: "timing" }}
-          >
+          <View>
             <Text style={styles.animalEmoji}>{chapter.animalEmoji}</Text>
-          </MotiView>
+          </View>
           <MotiView
             from={{ opacity: 0 }}
             animate={{ opacity: showContinuation ? 0 : 1 }}

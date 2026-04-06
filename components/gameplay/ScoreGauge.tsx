@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import Animated, {
@@ -49,7 +49,7 @@ function arcPath(
   return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
 }
 
-export function ScoreGauge({ score, size = 120 }: Props) {
+export const ScoreGauge = memo(function ScoreGauge({ score, size = 120 }: Props) {
   const strokeWidth = size * 0.1;
   const radius = (size - strokeWidth) / 2;
   const cx = size / 2;
@@ -109,7 +109,7 @@ export function ScoreGauge({ score, size = 120 }: Props) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
