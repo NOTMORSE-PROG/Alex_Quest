@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
@@ -22,6 +22,7 @@ import { assessAnswer, assessAnswerFallback, buildSimpleResult } from "@/lib/ass
 import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { useWhisper } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
+import { RECORDING_TIMEOUT_MS } from "@/lib/config";
 import type { AssessmentResult } from "@/types/assessment";
 
 const TAG = "[ChapterPage]";
@@ -38,7 +39,6 @@ export default function ChapterPage() {
   const {
     completeChapter,
     saveQuestionScore,
-    clearSessionScores,
     incrementAttemptCount,
     attemptCounts,
     saveRecordingPath,
@@ -59,6 +59,11 @@ export default function ChapterPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  // "no-speech" shown when Whisper returns empty — user must try again
+  const [noSpeechError, setNoSpeechError] = useState(false);
+
+  // Auto-stop recording after timeout
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Derive question data
   const questions = chapter?.questions ?? [];
@@ -85,11 +90,6 @@ export default function ChapterPage() {
       console.log(`${TAG} mic permission granted`);
       loadDictionary();
 
-      // Only clear scores when starting fresh (not resuming)
-      if (!isResuming) {
-        clearSessionScores();
-      }
-
       // Ensure recordings directory exists
       const dir = `${FileSystem.documentDirectory}recordings/`;
       const dirInfo = await FileSystem.getInfoAsync(dir);
@@ -99,7 +99,19 @@ export default function ChapterPage() {
     }
 
     setup();
-  }, [introComplete, clearSessionScores, router, isResuming]);
+    // NOTE: clearSessionScores() intentionally NOT called here.
+    // Question scores are keyed by chapterId-questionId so replaying a chapter
+    // naturally overwrites. Clearing all scores would destroy cross-chapter badge data.
+  }, [introComplete, router]);
+
+  // Cleanup recording timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Get current hint based on attempt count
   const getCurrentHint = useCallback(() => {
@@ -115,6 +127,7 @@ export default function ChapterPage() {
     if (!currentQ || feedback) return;
 
     setIsAnalyzing(true);
+    setNoSpeechError(false);
     console.log(`${TAG} handleAssess — qType=${currentQ.type} audioUri=${audioUri}`);
 
     const expected =
@@ -122,13 +135,13 @@ export default function ChapterPage() {
         ? currentQ.fullSentenceExpected
         : currentQ.expectedAnswer;
 
-    const attemptNum = incrementAttemptCount(chapterId, currentQ.id);
-
     let result: AssessmentResult;
 
     try {
       // ── identify: simple YES/NO check, no phoneme assessment ──
       if (currentQ.type === "identify") {
+        // Increment attempt only when we actually have audio to assess
+        incrementAttemptCount(chapterId, currentQ.id);
         let transcript = "";
         if (whisper.isReady && audioUri) {
           const wr = await whisper.transcribe(audioUri);
@@ -148,26 +161,35 @@ export default function ChapterPage() {
       else if (whisper.isReady && audioUri) {
         console.log(`${TAG} using Whisper for assessment`);
         const whisperResult = await whisper.transcribe(audioUri);
-        if (whisperResult && whisperResult.text.trim()) {
-          result = assessAnswer(
-            whisperResult,
-            expected,
-            currentQ.acceptableAnswers,
-            currentQ.type,
-            attemptNum - 1
-          );
-        } else {
-          console.warn(`${TAG} Whisper returned empty, using empty-transcript fallback`);
-          result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
+
+        // Empty transcript — Whisper couldn't hear speech. Don't count as attempt.
+        if (!whisperResult || !whisperResult.text.trim()) {
+          console.warn(`${TAG} Whisper returned empty — showing no-speech error`);
+          setNoSpeechError(true);
+          setIsAnalyzing(false);
+          if (audioUri) cleanupAudioFile(audioUri);
+          return; // ← exit without saving score or incrementing attempt
         }
+
+        // We have content — increment attempt now
+        incrementAttemptCount(chapterId, currentQ.id);
+        result = assessAnswer(
+          whisperResult,
+          expected,
+          currentQ.acceptableAnswers,
+          currentQ.type,
+          attemptNum - 1
+        );
         console.log(`${TAG} Whisper assessment — passed=${result.passed} score=${result.overallScore}`);
       } else {
-        // No Whisper — cannot assess without transcript
-        console.warn(`${TAG} Whisper not ready and no fallback transcript — treating as no-speech`);
+        // No Whisper available — use fallback (still counts as attempt)
+        incrementAttemptCount(chapterId, currentQ.id);
+        console.warn(`${TAG} Whisper not ready — using fallback path`);
         result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
       }
     } catch (e) {
       console.error(`${TAG} assessment threw:`, e);
+      const attemptNum = incrementAttemptCount(chapterId, currentQ.id);
       result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
     } finally {
       setIsAnalyzing(false);
@@ -209,23 +231,45 @@ export default function ChapterPage() {
     if (isRecording || isAnalyzing) return;
     console.log(`${TAG} handleStartRecording`);
     setRecordingUri(null);
+    setNoSpeechError(false);
     await recorder.startRecording();
     setIsRecording(true);
+
+    // Auto-stop after timeout so kids don't get stuck with mic open
+    recordingTimeoutRef.current = setTimeout(() => {
+      console.log(`${TAG} recording auto-timeout reached`);
+      handleStopRecordingRef.current?.();
+    }, RECORDING_TIMEOUT_MS);
   }, [isRecording, isAnalyzing, recorder]);
+
+  // Use a ref so the timeout callback always calls the latest version
+  const handleStopRecordingRef = useRef<(() => Promise<void>) | null>(null);
 
   const handleStopRecording = useCallback(async () => {
     if (!isRecording) return;
     console.log(`${TAG} handleStopRecording`);
+
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+
     setIsRecording(false);
     const audioUri = await recorder.stopRecording();
     console.log(`${TAG} audio captured — uri=${audioUri}`);
     await handleAssess(audioUri);
   }, [isRecording, recorder, handleAssess]);
 
+  // Keep ref in sync with latest callback
+  useEffect(() => {
+    handleStopRecordingRef.current = handleStopRecording;
+  }, [handleStopRecording]);
+
   // ── Try Again ─────────────────────────────────────────────────────
   const handleTryAgain = useCallback(() => {
     setFeedback(null);
     setRecordingUri(null);
+    setNoSpeechError(false);
     resetMood();
   }, [resetMood]);
 
@@ -243,6 +287,7 @@ export default function ChapterPage() {
   const handleNext = useCallback(() => {
     setFeedback(null);
     setRecordingUri(null);
+    setNoSpeechError(false);
     if (isLast) {
       completeChapter(chapterId);
       setActiveQuestion(0, chapterId);
@@ -259,6 +304,10 @@ export default function ChapterPage() {
   // ── Back button with confirmation ─────────────────────────────────
   const handleBack = useCallback(async () => {
     if (isRecording) {
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current);
+        recordingTimeoutRef.current = null;
+      }
       await recorder.stopRecording();
       setIsRecording(false);
     }
@@ -349,6 +398,39 @@ export default function ChapterPage() {
         {/* Speech Input — hidden while feedback is showing */}
         {feedback === null && (
           <View style={styles.speechArea}>
+            {/* Whisper status banner */}
+            {whisper.isLoading && (
+              <MotiView
+                from={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                style={styles.whisperBanner}
+              >
+                <Text style={styles.whisperBannerText}>
+                  {whisper.downloadProgress > 0
+                    ? `Setting up speech engine… ${Math.round(whisper.downloadProgress * 100)}%`
+                    : "Setting up speech engine…"}
+                </Text>
+              </MotiView>
+            )}
+            {!whisper.isReady && !whisper.isLoading && (
+              <View style={styles.whisperBanner}>
+                <Text style={styles.whisperBannerText}>Basic speech mode — tap mic and speak</Text>
+              </View>
+            )}
+
+            {/* No-speech error */}
+            {noSpeechError && (
+              <MotiView
+                from={{ opacity: 0, translateY: -6 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                style={styles.noSpeechBanner}
+              >
+                <Text style={styles.noSpeechText}>
+                  We couldn't hear you — please speak louder and try again!
+                </Text>
+              </MotiView>
+            )}
+
             <SpeechInput
               state={speechState}
               transcript=""
@@ -379,5 +461,33 @@ const styles = StyleSheet.create({
   rivalRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   rivalBubble: { flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: 12 },
   rivalText: { fontFamily: fonts.body, fontSize: 14, color: "white", fontStyle: "italic" },
-  speechArea: { paddingHorizontal: 16, alignItems: "center" },
+  speechArea: { paddingHorizontal: 16, alignItems: "center", gap: 10 },
+  whisperBanner: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignSelf: "stretch",
+  },
+  whisperBannerText: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "center",
+  },
+  noSpeechBanner: {
+    backgroundColor: "rgba(255,180,0,0.18)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,180,0,0.4)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignSelf: "stretch",
+  },
+  noSpeechText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: "#FFD966",
+    textAlign: "center",
+  },
 });

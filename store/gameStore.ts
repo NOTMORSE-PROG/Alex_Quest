@@ -7,10 +7,44 @@ import { evaluateBadges } from "@/lib/badgeEngine";
 import { chapters } from "@/lib/chaptersData";
 import type { VocabEntry } from "@/lib/chaptersData";
 
+// Debounce AsyncStorage writes — batch rapid updates (e.g. per-question score saves)
+// into a single write every 3 seconds instead of one write per state change.
+let _persistTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingKey: string | null = null;
+let _pendingValue: string | null = null;
+
+const debouncedStorage = {
+  getItem: (name: string) => AsyncStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    _pendingKey = name;
+    _pendingValue = value;
+    if (_persistTimer) clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(() => {
+      AsyncStorage.setItem(name, value);
+      _persistTimer = null;
+    }, 3000);
+  },
+  removeItem: (name: string) => AsyncStorage.removeItem(name),
+};
+
+/**
+ * Call this when the app is backgrounded to flush any pending debounced write
+ * immediately, preventing data loss on force-quit.
+ */
+export function flushPendingStorage() {
+  if (_persistTimer && _pendingKey && _pendingValue) {
+    clearTimeout(_persistTimer);
+    _persistTimer = null;
+    AsyncStorage.setItem(_pendingKey, _pendingValue);
+  }
+}
+
 export type ChapterId = 1 | 2 | 3 | 4 | 5;
 
 export interface ChapterProgress {
   completed: boolean;
+  /** Problem phonemes captured at chapter completion — used for Sound Master badge */
+  problemPhonemes?: string[];
 }
 
 export interface GameState {
@@ -56,6 +90,7 @@ export interface GameState {
   saveQuestionScore: (chapterId: number, questionId: number, result: AssessmentResult) => void;
   clearSessionScores: () => void;
   incrementAttemptCount: (chapterId: number, questionId: number) => number;
+  decrementAttemptCount: (chapterId: number, questionId: number) => void;
   saveRecordingPath: (chapterId: number, questionId: number, path: string) => void;
   saveWotdScore: (dateKey: string, score: number) => void;
   updateStreak: () => void;
@@ -100,10 +135,16 @@ export const useGameStore = create<GameState>()(
         set((state) => ({
           chapterProgress: {
             ...state.chapterProgress,
-            [id]: { completed: true },
+            [id]: {
+              completed: true,
+              // Snapshot problem phonemes at chapter completion for badge evaluation
+              problemPhonemes: [...state.problemPhonemes],
+            },
           },
           currentChapter:
             id < 5 ? ((id + 1) as ChapterId) : state.currentChapter,
+          // Reset problem phonemes for the next chapter session
+          problemPhonemes: [],
         }));
         get()._evaluateAndAwardBadges();
       },
@@ -145,6 +186,7 @@ export const useGameStore = create<GameState>()(
         get()._evaluateAndAwardBadges();
       },
 
+      // Kept for explicit reset (e.g. dev tools / debug). Not called on chapter start.
       clearSessionScores: () =>
         set({ questionScores: {}, problemPhonemes: [], attemptCounts: {} }),
 
@@ -168,6 +210,17 @@ export const useGameStore = create<GameState>()(
         return newCount;
       },
 
+      decrementAttemptCount: (chapterId, questionId) => {
+        const key = `${chapterId}-${questionId}`;
+        set((state) => {
+          const current = state.attemptCounts[key] ?? 0;
+          if (current <= 0) return {};
+          return {
+            attemptCounts: { ...state.attemptCounts, [key]: current - 1 },
+          };
+        });
+      },
+
       saveWotdScore: (dateKey, score) =>
         set((state) => {
           const existing = state.wotdHistory[dateKey];
@@ -184,7 +237,12 @@ export const useGameStore = create<GameState>()(
             .split("T")[0];
           const newStreak =
             state.lastPlayedDate === yesterday ? state.streak + 1 : 1;
-          return { streak: newStreak, lastPlayedDate: today };
+          return {
+            streak: newStreak,
+            lastPlayedDate: today,
+            // Reset daily flags when the date rolls over
+            vocabSeenToday: false,
+          };
         });
         get()._evaluateAndAwardBadges();
       },
@@ -234,8 +292,8 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: "alexs-quest-save",
-      version: 6,
-      storage: createJSONStorage(() => AsyncStorage),
+      version: 7,
+      storage: createJSONStorage(() => debouncedStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
         if (version < 2) {
@@ -260,13 +318,27 @@ export const useGameStore = create<GameState>()(
           state.wotdHistory = {};
         }
         if (version < 6) {
-          // Remove star fields and wrongAttempts
           delete state.wrongAttempts;
           if (state.chapterProgress && typeof state.chapterProgress === "object") {
             const cp = state.chapterProgress as Record<string, Record<string, unknown>>;
             for (const ch of Object.values(cp)) {
               delete ch.stars;
             }
+          }
+        }
+        if (version < 7) {
+          // Add problemPhonemes snapshot field to existing chapter progress entries
+          if (state.chapterProgress && typeof state.chapterProgress === "object") {
+            const cp = state.chapterProgress as Record<string, Record<string, unknown>>;
+            for (const ch of Object.values(cp)) {
+              if (ch.problemPhonemes === undefined) {
+                ch.problemPhonemes = [];
+              }
+            }
+          }
+          // vocabSeenToday default
+          if (state.vocabSeenToday === undefined) {
+            state.vocabSeenToday = false;
           }
         }
         return state as unknown as GameState;
