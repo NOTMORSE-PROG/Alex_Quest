@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { Component, useEffect } from "react";
+import type { ReactNode } from "react";
 import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
+import { ScrollView, Text, View } from "react-native";
 import {
   Fredoka_400Regular,
 } from "@expo-google-fonts/fredoka";
@@ -16,6 +18,29 @@ import {
 import "../global.css";
 
 SplashScreen.preventAutoHideAsync();
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error as Error;
+      return (
+        <View style={{ flex: 1, backgroundColor: "#1a0000", justifyContent: "center", padding: 24 }}>
+          <Text style={{ color: "#ff6b6b", fontSize: 18, fontWeight: "bold", marginBottom: 12 }}>
+            App crashed
+          </Text>
+          <ScrollView>
+            <Text style={{ color: "#ffaaaa", fontSize: 13, fontFamily: "monospace" }}>
+              {err.message}{"\n\n"}{err.stack}
+            </Text>
+          </ScrollView>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -35,10 +60,12 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

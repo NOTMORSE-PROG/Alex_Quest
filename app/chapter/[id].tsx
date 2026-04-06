@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Speech from "expo-speech";
+import * as FileSystem from "expo-file-system/legacy";
+import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { QuestionCard } from "@/components/gameplay/QuestionCard";
 import { SpeechInput } from "@/components/gameplay/SpeechInput";
@@ -10,14 +13,18 @@ import { AnswerFeedback } from "@/components/gameplay/AnswerFeedback";
 import { RivalCharacter } from "@/components/gameplay/RivalCharacter";
 import { ChapterIntroScene } from "@/components/gameplay/ChapterIntroScene";
 import { ProgressDots } from "@/components/ui/ProgressDots";
-import { FloatingXP } from "@/components/animations/FloatingXP";
 import { getChapter } from "@/lib/chaptersData";
-import { scoreAnswer } from "@/lib/speechScore";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useAudioRecorder, cleanupAudioFile } from "@/hooks/useAudioRecorder";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
 import { useAudio } from "@/hooks/useAudio";
+import { loadDictionary } from "@/lib/cmuDictionary";
+import { assessAnswer, assessAnswerFallback, buildSimpleResult } from "@/lib/assessmentEngine";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
+import { useWhisper } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
+import type { AssessmentResult } from "@/types/assessment";
+
+const TAG = "[ChapterPage]";
 
 export default function ChapterPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,82 +33,250 @@ export default function ChapterPage() {
   const chapterId = Number(id) as ChapterId;
   const chapter = getChapter(chapterId);
 
-  const { mood, celebrate, worry, think, resetMood } = useAlexAnimation();
+  const { mood, celebrate, worry, resetMood } = useAlexAnimation();
   const { playSFX } = useAudio();
-  const { completeChapter, addXP, incrementWrongAttempts, resetWrongAttempts, wrongAttempts } = useGameStore();
-  const speech = useSpeechRecognition();
+  const {
+    completeChapter,
+    saveQuestionScore,
+    clearSessionScores,
+    incrementAttemptCount,
+    attemptCounts,
+    saveRecordingPath,
+    activeQuestionIndex,
+    activeChapterId,
+    setActiveQuestion,
+  } = useGameStore();
 
-  const [introComplete, setIntroComplete] = useState(false);
-  const [qIndex, setQIndex] = useState(0);
-  const [feedback, setFeedback] = useState<boolean | null>(null);
-  const [xpGain, setXpGain] = useState<number | null>(null);
-  const [totalXP, setTotalXP] = useState(0);
-  const [wrongCount, setWrongCount] = useState(0);
+  const recorder = useAudioRecorder();
+  const whisper = useWhisper();
 
-  // Derive question data safely (may be undefined before chapter loads)
+  // Resume if we have saved progress for this exact chapter
+  const isResuming = activeChapterId === chapterId && activeQuestionIndex > 0;
+
+  const [introComplete, setIntroComplete] = useState(isResuming);
+  const [qIndex, setQIndex] = useState(isResuming ? activeQuestionIndex : 0);
+  const [feedback, setFeedback] = useState<AssessmentResult | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [recordingUri, setRecordingUri] = useState<string | null>(null);
+
+  // Derive question data
   const questions = chapter?.questions ?? [];
   const currentQ = questions[qIndex];
   const isLast = qIndex === questions.length - 1;
+  const attemptKey = `${chapterId}-${currentQ?.id ?? 0}`;
+  const currentAttemptCount = attemptCounts[attemptKey] ?? 0;
 
-  const handleAnswer = (answer: string) => {
-    if (!currentQ) return;
-    const score = scoreAnswer(answer, currentQ.expectedAnswer);
-    const correct = score >= 0.6;
+  // Request mic permissions and load dictionary when chapter starts
+  useEffect(() => {
+    if (!introComplete) return;
 
-    if (correct) {
+    async function setup() {
+      console.log(`${TAG} setup — requesting mic permission`);
+      const { status } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Microphone Required",
+          "Please allow microphone access in Settings so you can speak your answers.",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+        return;
+      }
+      console.log(`${TAG} mic permission granted`);
+      loadDictionary();
+
+      // Only clear scores when starting fresh (not resuming)
+      if (!isResuming) {
+        clearSessionScores();
+      }
+
+      // Ensure recordings directory exists
+      const dir = `${FileSystem.documentDirectory}recordings/`;
+      const dirInfo = await FileSystem.getInfoAsync(dir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      }
+    }
+
+    setup();
+  }, [introComplete, clearSessionScores, router, isResuming]);
+
+  // Get current hint based on attempt count
+  const getCurrentHint = useCallback(() => {
+    if (!currentQ) return undefined;
+    if (currentAttemptCount >= 3) return currentQ.hint3 ?? currentQ.hint2 ?? currentQ.hint;
+    if (currentAttemptCount >= 2) return currentQ.hint2 ?? currentQ.hint;
+    if (currentAttemptCount >= 1) return currentQ.hint;
+    return undefined;
+  }, [currentQ, currentAttemptCount]);
+
+  // ── Core assessment handler ───────────────────────────────────────
+  const handleAssess = useCallback(async (audioUri: string | null) => {
+    if (!currentQ || feedback) return;
+
+    setIsAnalyzing(true);
+    console.log(`${TAG} handleAssess — qType=${currentQ.type} audioUri=${audioUri}`);
+
+    const expected =
+      currentQ.type === "build" && currentQ.fullSentenceExpected
+        ? currentQ.fullSentenceExpected
+        : currentQ.expectedAnswer;
+
+    const attemptNum = incrementAttemptCount(chapterId, currentQ.id);
+
+    let result: AssessmentResult;
+
+    try {
+      // ── identify: simple YES/NO check, no phoneme assessment ──
+      if (currentQ.type === "identify") {
+        let transcript = "";
+        if (whisper.isReady && audioUri) {
+          const wr = await whisper.transcribe(audioUri);
+          transcript = wr?.text ?? "";
+        }
+        console.log(`${TAG} identify transcript="${transcript}" expected="${expected}"`);
+        const spoken = transcript.toLowerCase().trim();
+        const exp = expected.toLowerCase().trim();
+        const passed =
+          (spoken.includes("yes") && exp === "yes") ||
+          (spoken.includes("no") && exp === "no") ||
+          spoken === exp;
+        result = buildSimpleResult(passed, transcript, expected);
+        console.log(`${TAG} identify result — passed=${passed}`);
+      }
+      // ── all other types: full phoneme assessment ──
+      else if (whisper.isReady && audioUri) {
+        console.log(`${TAG} using Whisper for assessment`);
+        const whisperResult = await whisper.transcribe(audioUri);
+        if (whisperResult && whisperResult.text.trim()) {
+          result = assessAnswer(
+            whisperResult,
+            expected,
+            currentQ.acceptableAnswers,
+            currentQ.type,
+            attemptNum - 1
+          );
+        } else {
+          console.warn(`${TAG} Whisper returned empty, using empty-transcript fallback`);
+          result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
+        }
+        console.log(`${TAG} Whisper assessment — passed=${result.passed} score=${result.overallScore}`);
+      } else {
+        // No Whisper — cannot assess without transcript
+        console.warn(`${TAG} Whisper not ready and no fallback transcript — treating as no-speech`);
+        result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
+      }
+    } catch (e) {
+      console.error(`${TAG} assessment threw:`, e);
+      result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
+    } finally {
+      setIsAnalyzing(false);
+    }
+
+    // Save recording for playback
+    if (audioUri) {
+      try {
+        const destPath = `${FileSystem.documentDirectory}recordings/${chapterId}_q${currentQ.id}.m4a`;
+        await FileSystem.copyAsync({ from: audioUri, to: destPath });
+        setRecordingUri(destPath);
+        saveRecordingPath(chapterId, currentQ.id, destPath);
+        console.log(`${TAG} recording saved to ${destPath}`);
+      } catch (e) {
+        console.warn(`${TAG} failed to save recording:`, e);
+        setRecordingUri(audioUri); // use temp uri as fallback
+      }
+      cleanupAudioFile(audioUri);
+    }
+
+    saveQuestionScore(chapterId, currentQ.id, result);
+    setFeedback(result);
+
+    if (result.passed) {
       playSFX("correct");
       celebrate();
-      const xp = currentQ.xpValue;
-      addXP(xp);
-      setTotalXP((t) => t + xp);
-      setXpGain(xp);
-      setFeedback(true);
-      resetWrongAttempts();
-      setWrongCount(0);
-      setTimeout(() => {
-        setXpGain(null);
-        setFeedback(null);
-        if (isLast) {
-          const stars = wrongCount === 0 ? 3 : wrongCount <= 2 ? 2 : 1;
-          completeChapter(chapterId, stars, totalXP + xp);
-          router.replace(`/reward/${chapterId}`);
-        } else {
-          setQIndex((i) => i + 1);
-          resetMood();
-          speech.reset();
-        }
-      }, 1800);
     } else {
       playSFX("wrong");
       worry();
-      setFeedback(false);
-      incrementWrongAttempts();
-      setWrongCount((w) => w + 1);
-      setTimeout(() => {
-        setFeedback(null);
-        resetMood();
-        speech.reset();
-      }, 2200);
     }
-  };
+  }, [
+    currentQ, feedback, whisper, chapterId,
+    incrementAttemptCount, saveQuestionScore, saveRecordingPath,
+    playSFX, celebrate, worry,
+  ]);
 
-  const handleOptionPress = (option: string) => {
-    if (feedback !== null) return;
-    playSFX("tap");
-    think();
-    handleAnswer(option);
-  };
+  // ── Recording controls ────────────────────────────────────────────
+  const handleStartRecording = useCallback(async () => {
+    if (isRecording || isAnalyzing) return;
+    console.log(`${TAG} handleStartRecording`);
+    setRecordingUri(null);
+    await recorder.startRecording();
+    setIsRecording(true);
+  }, [isRecording, isAnalyzing, recorder]);
 
-  const handleAnswerRef = useRef(handleAnswer);
-  handleAnswerRef.current = handleAnswer;
+  const handleStopRecording = useCallback(async () => {
+    if (!isRecording) return;
+    console.log(`${TAG} handleStopRecording`);
+    setIsRecording(false);
+    const audioUri = await recorder.stopRecording();
+    console.log(`${TAG} audio captured — uri=${audioUri}`);
+    await handleAssess(audioUri);
+  }, [isRecording, recorder, handleAssess]);
 
-  useEffect(() => {
-    if (speech.state === "done" && speech.transcript && introComplete) {
-      handleAnswerRef.current(speech.transcript);
+  // ── Try Again ─────────────────────────────────────────────────────
+  const handleTryAgain = useCallback(() => {
+    setFeedback(null);
+    setRecordingUri(null);
+    resetMood();
+  }, [resetMood]);
+
+  // ── Listen (TTS) ──────────────────────────────────────────────────
+  const handleListen = useCallback(() => {
+    if (!currentQ) return;
+    const text =
+      currentQ.type === "build" && currentQ.fullSentenceExpected
+        ? currentQ.fullSentenceExpected
+        : currentQ.expectedAnswer;
+    Speech.speak(text, { language: "en-US", rate: 0.85 });
+  }, [currentQ]);
+
+  // ── Advance to next question or finish chapter ─────────────────────
+  const handleNext = useCallback(() => {
+    setFeedback(null);
+    setRecordingUri(null);
+    if (isLast) {
+      completeChapter(chapterId);
+      setActiveQuestion(0, chapterId);
+      router.replace(`/reward/${chapterId}`);
+    } else {
+      setQIndex((i) => {
+        setActiveQuestion(i + 1, chapterId);
+        return i + 1;
+      });
+      resetMood();
     }
-  }, [speech.state, speech.transcript, introComplete]);
+  }, [isLast, chapterId, completeChapter, setActiveQuestion, router, resetMood]);
 
-  // Early returns after all hooks
+  // ── Back button with confirmation ─────────────────────────────────
+  const handleBack = useCallback(async () => {
+    if (isRecording) {
+      await recorder.stopRecording();
+      setIsRecording(false);
+    }
+    Alert.alert(
+      "Leave Chapter?",
+      "Your progress is saved. You can continue later.",
+      [
+        { text: "Stay", style: "cancel" },
+        { text: "Leave", style: "destructive", onPress: () => router.back() },
+      ]
+    );
+  }, [isRecording, recorder, router]);
+
+  // Derive speech state for SpeechInput display
+  const speechState = isAnalyzing ? "processing" : isRecording ? "recording" : "idle";
+
+  // ── Render ────────────────────────────────────────────────────────
+
   if (!chapter) {
     return (
       <View style={styles.error}>
@@ -114,9 +289,6 @@ export default function ChapterPage() {
     return <ChapterIntroScene chapter={chapter} onStart={() => setIntroComplete(true)} />;
   }
 
-  const isSpeakType = currentQ.type === "speak" || currentQ.type === "rival";
-  const isChoiceType = currentQ.type === "choice" || currentQ.type === "build" || currentQ.type === "identify";
-
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: chapter.accentColorHex + "CC" }]} />
@@ -124,7 +296,7 @@ export default function ChapterPage() {
 
       {/* Header row */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={handleBack} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
         <AlexCharacter mood={mood} variant="small" />
@@ -157,48 +329,39 @@ export default function ChapterPage() {
         <QuestionCard
           question={currentQ.prompt}
           directions={currentQ.directions}
-          hint={feedback === false ? currentQ.hint : undefined}
           questionNumber={qIndex + 1}
           total={questions.length}
+          options={currentQ.type === "choice" ? currentQ.options : undefined}
+          blank={currentQ.type === "build" ? currentQ.blank : undefined}
         />
 
+        {/* Assessment Feedback */}
         <AnswerFeedback
-          correct={feedback}
-          correctAnswer={feedback === false ? currentQ.expectedAnswer : undefined}
+          result={feedback}
+          hint={getCurrentHint()}
+          recordingUri={recordingUri}
+          onTryAgain={feedback && !feedback.passed ? handleTryAgain : undefined}
+          onListen={feedback && !feedback.passed ? handleListen : undefined}
+          onNext={feedback?.passed ? handleNext : undefined}
+          isLastQuestion={isLast}
         />
 
-        {/* Options (choice / build / identify) */}
-        {isChoiceType && currentQ.options && feedback === null && (
-          <View style={styles.options}>
-            {currentQ.options.map((opt) => (
-              <Pressable key={opt} onPress={() => handleOptionPress(opt)} style={styles.optionBtn}>
-                <Text style={styles.optionText}>{opt}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        {/* Speech input (speak / rival) */}
-        {isSpeakType && feedback === null && (
+        {/* Speech Input — hidden while feedback is showing */}
+        {feedback === null && (
           <View style={styles.speechArea}>
             <SpeechInput
-              state={speech.state}
-              transcript={speech.transcript}
-              interimTranscript={speech.interimTranscript}
-              onStart={speech.startRecording}
-              onStop={speech.stopRecording}
-              error={speech.error}
+              state={speechState}
+              transcript=""
+              interimTranscript=""
+              onStart={handleStartRecording}
+              onStop={handleStopRecording}
+              error={recorder.error}
+              questionType={currentQ.type}
+              isAnalyzing={isAnalyzing}
             />
           </View>
         )}
       </ScrollView>
-
-      {/* Floating XP */}
-      {xpGain !== null && (
-        <View style={styles.xpOverlay} pointerEvents="none">
-          <FloatingXP amount={xpGain} onDone={() => setXpGain(null)} />
-        </View>
-      )}
     </View>
   );
 }
@@ -216,9 +379,5 @@ const styles = StyleSheet.create({
   rivalRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   rivalBubble: { flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: 12 },
   rivalText: { fontFamily: fonts.body, fontSize: 14, color: "white", fontStyle: "italic" },
-  options: { paddingHorizontal: 16, gap: 10 },
-  optionBtn: { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, paddingVertical: 14, paddingHorizontal: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
-  optionText: { fontFamily: fonts.body, fontSize: 16, color: "white", textAlign: "center" },
   speechArea: { paddingHorizontal: 16, alignItems: "center" },
-  xpOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
 });

@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlexCharacter } from "@/components/AlexCharacter";
-import { StarRating } from "@/components/ui/StarRating";
 import { ConfettiBlast } from "@/components/animations/ConfettiBlast";
 import { getChapter } from "@/lib/chaptersData";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { useAudio } from "@/hooks/useAudio";
+import { BadgeToast } from "@/components/ui/BadgeToast";
 import { colors, fonts } from "@/lib/theme";
+import { toIPA } from "@/lib/phonemeData";
+import { getScoreTier } from "@/lib/config";
 
 export default function RewardPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,20 +19,53 @@ export default function RewardPage() {
   const insets = useSafeAreaInsets();
   const chapterId = Number(id) as ChapterId;
   const chapter = getChapter(chapterId);
-  const { chapterProgress } = useGameStore();
+  const { questionScores } = useGameStore();
   const { playSFX } = useAudio();
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const progress = chapterProgress[chapterId];
-  const stars = progress?.stars ?? 0;
-  const xp = progress?.xpEarned ?? 0;
+  // Compute chapter pronunciation stats
+  const chapterStats = useMemo(() => {
+    const scores = Object.entries(questionScores)
+      .filter(([key]) => key.startsWith(`${chapterId}-`))
+      .map(([, result]) => result);
+
+    if (scores.length === 0) return null;
+
+    const avgPronunciation = Math.round(
+      scores.reduce((s, r) => s + r.pronunciationScore, 0) / scores.length
+    );
+    const avgOverall = Math.round(
+      scores.reduce((s, r) => s + r.overallScore, 0) / scores.length
+    );
+
+    // Find mastered vs problem phonemes from this chapter
+    const phonemeScores: Record<string, number[]> = {};
+    for (const result of scores) {
+      for (const wr of result.wordResults) {
+        for (const pr of wr.phonemes) {
+          if (!phonemeScores[pr.arpabet]) phonemeScores[pr.arpabet] = [];
+          phonemeScores[pr.arpabet].push(pr.qualityScore);
+        }
+      }
+    }
+
+    const mastered: string[] = [];
+    const needsPractice: string[] = [];
+    for (const [phoneme, scoreList] of Object.entries(phonemeScores)) {
+      const avg = scoreList.reduce((a, b) => a + b, 0) / scoreList.length;
+      if (avg >= 85) mastered.push(phoneme);
+      else if (avg < 60) needsPractice.push(phoneme);
+    }
+
+    return { avgPronunciation, avgOverall, mastered, needsPractice, totalQuestions: scores.length };
+  }, [questionScores, chapterId]);
 
   useEffect(() => {
     setTimeout(() => {
       setShowConfetti(true);
       playSFX("levelUp");
     }, 400);
-  }, []);
+  }, [playSFX]);
 
   if (!chapter) return null;
 
@@ -42,8 +77,9 @@ export default function RewardPage() {
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.navy, opacity: 0.6 }]} />
 
       <ConfettiBlast fire={showConfetti} />
+      <BadgeToast />
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         {/* Alex celebrating */}
         <MotiView
           from={{ scale: 0.5, opacity: 0 }}
@@ -64,25 +100,6 @@ export default function RewardPage() {
           <Text style={styles.chapterName}>{chapter.title}</Text>
         </MotiView>
 
-        {/* Stars */}
-        <MotiView
-          from={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 600, type: "spring" }}
-        >
-          <StarRating stars={stars} size={48} />
-        </MotiView>
-
-        {/* XP */}
-        <MotiView
-          from={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 900, duration: 300, type: "timing" }}
-          style={styles.xpBox}
-        >
-          <Text style={styles.xpText}>⚡ +{xp} XP earned!</Text>
-        </MotiView>
-
         {/* Story reward text */}
         <MotiView
           from={{ opacity: 0 }}
@@ -92,7 +109,52 @@ export default function RewardPage() {
         >
           <Text style={styles.storyText}>{chapter.story.reward}</Text>
         </MotiView>
-      </View>
+
+        {/* Pronunciation Summary */}
+        {chapterStats && (
+          <MotiView
+            from={{ opacity: 0, translateY: 20 }}
+            animate={{ opacity: 1, translateY: 0 }}
+            transition={{ delay: 1300, type: "spring" }}
+            style={styles.pronSummary}
+          >
+            <Text style={styles.pronTitle}>Your Pronunciation</Text>
+            <View style={styles.pronScoreRow}>
+              <Text style={styles.pronScore}>
+                {getScoreTier(chapterStats.avgPronunciation).emoji}{" "}
+                {chapterStats.avgPronunciation}%
+              </Text>
+              <Text style={styles.pronLabel}>avg pronunciation</Text>
+            </View>
+
+            {chapterStats.mastered.length > 0 && (
+              <View style={styles.phonemeSection}>
+                <Text style={styles.phonemeSectionTitle}>Sounds you mastered</Text>
+                <View style={styles.phonemePills}>
+                  {chapterStats.mastered.slice(0, 8).map((p) => (
+                    <View key={p} style={[styles.phonemePill, styles.masteredPill]}>
+                      <Text style={styles.phonemePillText}>{toIPA(p)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {chapterStats.needsPractice.length > 0 && (
+              <View style={styles.phonemeSection}>
+                <Text style={styles.phonemeSectionTitle}>Sounds to keep practicing</Text>
+                <View style={styles.phonemePills}>
+                  {chapterStats.needsPractice.slice(0, 5).map((p) => (
+                    <View key={p} style={[styles.phonemePill, styles.practicePill]}>
+                      <Text style={styles.phonemePillText}>{toIPA(p)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </MotiView>
+        )}
+      </ScrollView>
 
       {/* Buttons */}
       <MotiView
@@ -106,14 +168,14 @@ export default function RewardPage() {
             onPress={() => { playSFX("click"); router.replace("/map"); }}
             style={styles.nextBtn}
           >
-            <Text style={styles.nextBtnText}>Next Chapter →</Text>
+            <Text style={styles.nextBtnText}>Continue to Stage {chapterId + 1} →</Text>
           </Pressable>
         )}
         <Pressable
-          onPress={() => { playSFX("click"); router.replace("/home"); }}
+          onPress={() => { playSFX("click"); router.replace("/map"); }}
           style={styles.homeBtn}
         >
-          <Text style={styles.homeBtnText}>{hasNext ? "Back to Home" : "🏠 Home"}</Text>
+          <Text style={styles.homeBtnText}>Back to Map</Text>
         </Pressable>
       </MotiView>
     </View>
@@ -126,8 +188,6 @@ const styles = StyleSheet.create({
   titleBlock: { alignItems: "center" },
   congrats: { fontFamily: fonts.display, fontSize: 28, color: "white", textAlign: "center" },
   chapterName: { fontFamily: fonts.body, fontSize: 16, color: "rgba(255,255,255,0.7)", marginTop: 4 },
-  xpBox: { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10 },
-  xpText: { fontFamily: fonts.display, fontSize: 20, color: colors.gold },
   storyBox: { backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 16, padding: 16, maxWidth: 340 },
   storyText: { fontFamily: fonts.body, fontSize: 14, color: "rgba(255,255,255,0.85)", textAlign: "center", lineHeight: 22 },
   buttons: { paddingHorizontal: 24, gap: 12 },
@@ -135,4 +195,16 @@ const styles = StyleSheet.create({
   nextBtnText: { fontFamily: fonts.display, fontSize: 18, color: "white" },
   homeBtn: { backgroundColor: "rgba(255,255,255,0.15)", paddingVertical: 14, borderRadius: 100, alignItems: "center" },
   homeBtnText: { fontFamily: fonts.body, fontSize: 15, color: "white" },
+  pronSummary: { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 16, padding: 16, width: "100%", maxWidth: 340, gap: 10 },
+  pronTitle: { fontFamily: fonts.body, fontSize: 16, color: "white", textAlign: "center" },
+  pronScoreRow: { alignItems: "center", gap: 2 },
+  pronScore: { fontFamily: fonts.display, fontSize: 24, color: colors.gold },
+  pronLabel: { fontFamily: fonts.bodyRegular, fontSize: 12, color: "rgba(255,255,255,0.6)" },
+  phonemeSection: { gap: 6 },
+  phonemeSectionTitle: { fontFamily: fonts.body, fontSize: 12, color: "rgba(255,255,255,0.7)" },
+  phonemePills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  phonemePill: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, minWidth: 32, alignItems: "center" },
+  masteredPill: { backgroundColor: `${colors.success}40` },
+  practicePill: { backgroundColor: `${colors.warning}40` },
+  phonemePillText: { fontFamily: fonts.body, fontSize: 14, color: "white" },
 });

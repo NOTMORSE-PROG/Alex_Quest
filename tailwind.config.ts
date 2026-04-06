@@ -2,6 +2,7 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   // NativeWind v4 preset
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   presets: [require("nativewind/preset")],
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",

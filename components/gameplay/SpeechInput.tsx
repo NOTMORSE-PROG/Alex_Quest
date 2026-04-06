@@ -3,6 +3,15 @@ import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
 import { WaveformVisualizer } from "@/components/animations/WaveformVisualizer";
 import type { SpeechState } from "@/hooks/useSpeechRecognition";
+import type { QuestionType } from "@/lib/chaptersData";
+
+const SPEECH_LABELS: Record<QuestionType, string> = {
+  identify: "Say YES or NO",
+  build: "Say the full sentence",
+  choice: "Say the correct sentence",
+  speak: "Say the sentence",
+  rival: "Say the correct version",
+};
 
 interface Props {
   state: SpeechState;
@@ -11,11 +20,13 @@ interface Props {
   onStart: () => void;
   onStop: () => void;
   error: string | null;
+  questionType?: QuestionType;
+  isAnalyzing?: boolean;
 }
 
-export function SpeechInput({ state, transcript, interimTranscript, onStart, onStop, error }: Props) {
+export function SpeechInput({ state, transcript, interimTranscript, onStart, onStop, error, questionType, isAnalyzing }: Props) {
   const isRecording = state === "recording";
-  const isProcessing = state === "processing";
+  const isProcessing = state === "processing" || isAnalyzing;
 
   return (
     <View style={styles.container}>
@@ -66,8 +77,15 @@ export function SpeechInput({ state, transcript, interimTranscript, onStart, onS
         </View>
       )}
 
+      {/* Question type instruction badge */}
+      {questionType && !isRecording && !isProcessing && (
+        <View style={styles.instructionBadge}>
+          <Text style={styles.instructionText}>{SPEECH_LABELS[questionType]}</Text>
+        </View>
+      )}
+
       <Text style={styles.hint}>
-        {isRecording ? "Tap to stop" : isProcessing ? "Processing..." : "Tap to speak"}
+        {isRecording ? "Tap to stop" : isAnalyzing ? "Analyzing pronunciation..." : isProcessing ? "Processing..." : "Tap to speak"}
       </Text>
     </View>
   );
@@ -132,5 +150,16 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     color: "rgba(255,255,255,0.7)",
+  },
+  instructionBadge: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  instructionText: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.9)",
   },
 });

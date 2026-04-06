@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fonts } from "@/lib/theme";
+import { fonts } from "@/lib/theme";
 import { useGameStore } from "@/store/gameStore";
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 
 export function GameHeader({ transparent = false }: Props) {
   const insets = useSafeAreaInsets();
-  const { totalXP, hearts, streak } = useGameStore();
+  const streak = useGameStore((s) => s.streak);
 
   return (
     <View
@@ -19,24 +19,8 @@ export function GameHeader({ transparent = false }: Props) {
         transparent && styles.transparent,
       ]}
     >
-      {/* Hearts */}
-      <View style={styles.section}>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Text key={i} style={[styles.heart, i >= hearts && styles.heartEmpty]}>
-            ❤️
-          </Text>
-        ))}
-      </View>
-
-      {/* XP */}
-      <View style={styles.xpBadge}>
-        <Text style={styles.xpText}>⚡ {totalXP} XP</Text>
-      </View>
-
       {/* Streak */}
-      <View style={styles.section}>
-        <Text style={styles.streakText}>🔥 {streak}</Text>
-      </View>
+      <Text style={styles.streakText}>🔥 {streak}</Text>
     </View>
   );
 }
@@ -45,34 +29,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     paddingHorizontal: 16,
     paddingBottom: 12,
   },
   transparent: {
     backgroundColor: "transparent",
-  },
-  section: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  heart: {
-    fontSize: 16,
-  },
-  heartEmpty: {
-    opacity: 0.25,
-  },
-  xpBadge: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  xpText: {
-    color: "white",
-    fontFamily: fonts.display,
-    fontSize: 14,
   },
   streakText: {
     color: "white",

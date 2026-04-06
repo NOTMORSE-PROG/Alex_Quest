@@ -8,14 +8,20 @@ import { useGameStore } from "@/store/gameStore";
 
 export default function SplashScreen() {
   const router = useRouter();
-  const { tutorialCompleted } = useGameStore();
+  const { tutorialCompleted, introWatched } = useGameStore();
 
   useEffect(() => {
     const t = setTimeout(() => {
-      router.replace(tutorialCompleted ? "/home" : "/tutorial");
+      if (!introWatched) {
+        router.replace("/intro");
+      } else if (!tutorialCompleted) {
+        router.replace("/tutorial");
+      } else {
+        router.replace("/home");
+      }
     }, 2800);
     return () => clearTimeout(t);
-  }, [tutorialCompleted, router]);
+  }, [tutorialCompleted, introWatched, router]);
 
   return (
     <View style={styles.container}>

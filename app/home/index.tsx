@@ -3,25 +3,26 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
+import { CityBackground } from "@/components/CityBackground";
 import { GameHeader } from "@/components/ui/GameHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { BadgeToast } from "@/components/ui/BadgeToast";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
 import { useAudio } from "@/hooks/useAudio";
 import { useGameStore } from "@/store/gameStore";
 import { colors, fonts } from "@/lib/theme";
 
-type CloudDef = { top: string; left?: string; right?: string; scale: number; delay: number };
-const CLOUDS: CloudDef[] = [
-  { top: "8%", left: "5%", scale: 0.7, delay: 0 },
-  { top: "15%", right: "8%", scale: 0.9, delay: 1000 },
-  { top: "22%", left: "25%", scale: 0.6, delay: 2000 },
-];
-
 export default function HomePage() {
   const router = useRouter();
   const { mood, showBubble, bubbleText, tap } = useAlexAnimation();
   const { playSFX } = useAudio();
-  const { tutorialCompleted, questStarted } = useGameStore();
+  const tutorialCompleted = useGameStore((s) => s.tutorialCompleted);
+  const questStarted = useGameStore((s) => s.questStarted);
+  const updateStreak = useGameStore((s) => s.updateStreak);
+
+  useEffect(() => {
+    updateStreak();
+  }, [updateStreak]);
 
   useEffect(() => {
     if (!tutorialCompleted) {
@@ -38,20 +39,10 @@ export default function HomePage() {
 
   return (
     <View style={styles.container}>
-      {/* Sky gradient */}
-      <View style={[StyleSheet.absoluteFill, styles.bg]} />
-
-      {/* Floating clouds */}
-      {CLOUDS.map((c, i) => (
-        <MotiView
-          key={i}
-          animate={{ translateX: [0, 20, 0] }}
-          transition={{ loop: true, duration: 6000 + i * 1000, delay: c.delay, type: "timing" }}
-          style={[styles.cloud, { top: c.top, left: c.left, right: c.right, transform: [{ scale: c.scale }] }]}
-        >
-          <Text style={{ fontSize: 36 }}>☁️</Text>
-        </MotiView>
-      ))}
+      {/* City background */}
+      <View style={StyleSheet.absoluteFill}>
+        <CityBackground />
+      </View>
 
       <GameHeader transparent />
 
@@ -64,7 +55,7 @@ export default function HomePage() {
           style={styles.titleBlock}
         >
           <Text style={styles.title}>Alex's Quest</Text>
-          <Text style={styles.subtitle}>for Home 🏠</Text>
+          <Text style={styles.subtitle}>Learn English the fun way!</Text>
         </MotiView>
 
         {/* Alex */}
@@ -118,9 +109,10 @@ export default function HomePage() {
             </View>
           </Pressable>
         </MotiView>
+
       </View>
 
-      {/* Vocab shortcut */}
+      {/* Word of the Day shortcut */}
       <MotiView
         from={{ translateX: 80, opacity: 0 }}
         animate={{ translateX: 0, opacity: 1 }}
@@ -128,7 +120,7 @@ export default function HomePage() {
         style={styles.vocabBtn}
       >
         <Pressable
-          onPress={() => { playSFX("click"); router.push("/vocabulary"); }}
+          onPress={() => { playSFX("click"); router.push("/vocabulary/wotd"); }}
           style={styles.vocabBtnInner}
         >
           <Text style={{ fontSize: 22 }}>📖</Text>
@@ -139,6 +131,7 @@ export default function HomePage() {
         </Pressable>
       </MotiView>
 
+      <BadgeToast />
       <BottomNav />
     </View>
   );
@@ -146,8 +139,6 @@ export default function HomePage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  bg: { backgroundColor: colors.sky },
-  cloud: { position: "absolute" },
   content: {
     flex: 1,
     alignItems: "center",
@@ -156,13 +147,13 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   titleBlock: { alignItems: "center" },
-  title: { fontFamily: fonts.display, fontSize: 26, color: "white" },
-  subtitle: { fontFamily: fonts.body, fontSize: 14, color: "rgba(255,255,255,0.7)", marginTop: 2 },
+  title: { fontFamily: fonts.display, fontSize: 26, color: "white", textShadowColor: "rgba(0,0,0,0.55)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  subtitle: { fontFamily: fonts.body, fontSize: 14, color: "rgba(255,255,255,0.85)", marginTop: 2, textShadowColor: "rgba(0,0,0,0.55)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   tapHint: { alignItems: "center", marginTop: -4 },
-  tapHintText: { fontFamily: fonts.body, fontSize: 16, color: "white", textShadowColor: "rgba(0,0,0,0.2)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  tapHintText: { fontFamily: fonts.body, fontSize: 16, color: "white", textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   questBlock: { alignItems: "center", gap: 12 },
   arrowHint: { alignItems: "center" },
-  startHint: { fontFamily: fonts.body, fontSize: 12, color: "rgba(255,255,255,0.6)" },
+  startHint: { fontFamily: fonts.body, fontSize: 12, color: "rgba(255,255,255,0.85)", textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   questBtn: {},
   questBtnInner: {
     backgroundColor: colors.gold,

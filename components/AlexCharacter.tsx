@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import React from "react";
 import { MotiView } from "moti";
 import { Pressable, View } from "react-native";
 import LottieView from "lottie-react-native";
@@ -13,7 +13,6 @@ interface Props {
   showBubble?: boolean;
   bubbleText?: string;
   onClick?: () => void;
-  className?: string;
 }
 
 const VARIANT_SIZE: Record<AlexVariant, number> = {
@@ -51,28 +50,19 @@ const MOOD_SPEED: Record<AlexMood, number> = {
   falling: 1.8,
 };
 
-function AlexLottie({ size, mood }: { size: number; mood: AlexMood }) {
-  const ref = useRef<LottieView>(null);
-
-  useEffect(() => {
-    ref.current?.reset();
-    ref.current?.play();
-  }, [mood]);
-
+const AlexLottie = React.memo(function AlexLottie({ size, mood }: { size: number; mood: AlexMood }) {
   return (
     <LottieView
-      ref={ref}
       source={require("../assets/Parrot.json")}
       style={{ width: size, height: size }}
       speed={MOOD_SPEED[mood]}
       loop
       autoPlay
-      hardwareAccelerationAndroid
     />
   );
-}
+});
 
-export function AlexCharacter({
+export const AlexCharacter = React.memo(function AlexCharacter({
   mood = "idle",
   variant = "home",
   showBubble = false,
@@ -98,4 +88,4 @@ export function AlexCharacter({
       </MotiView>
     </View>
   );
-}
+});

@@ -1,5 +1,4 @@
-import { useCallback, useRef } from "react";
-import { Audio } from "expo-av";
+import { useAudioPlayer } from "expo-audio";
 
 export type SFX = "correct" | "wrong" | "tap" | "levelUp" | "confetti" | "click" | "vocab";
 
@@ -8,50 +7,27 @@ export type SFX = "correct" | "wrong" | "tap" | "levelUp" | "confetti" | "click"
 const SFX_ASSETS: Partial<Record<SFX, number>> = {};
 
 export function useAudio() {
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const player = useAudioPlayer(undefined);
 
-  const playSFX = useCallback(async (sfx: SFX) => {
+  const playSFX = (sfx: SFX) => {
     const asset = SFX_ASSETS[sfx];
     if (!asset) return; // silently no-op until MP3 assets are added
-
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-      const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: true });
-      soundRef.current = sound;
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) return;
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-          soundRef.current = null;
-        }
-      });
+      player.replace(asset);
+      player.play();
     } catch {
       // SFX is non-critical — silently fail
     }
-  }, []);
+  };
 
-  const playPronunciation = useCallback(async (uri: string) => {
+  const playPronunciation = (uri: string) => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-      soundRef.current = sound;
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) return;
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-          soundRef.current = null;
-        }
-      });
+      player.replace({ uri });
+      player.play();
     } catch {
-      playSFX("tap");
+      // non-critical — silently fail
     }
-  }, [playSFX]);
+  };
 
   return { playSFX, playPronunciation };
 }

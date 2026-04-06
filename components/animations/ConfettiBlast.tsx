@@ -19,7 +19,7 @@ export function ConfettiBlast({ fire = false }: Props) {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <ConfettiCannon
         ref={ref}
-        count={120}
+        count={40}
         origin={{ x: -10, y: 0 }}
         autoStart={false}
         fadeOut
