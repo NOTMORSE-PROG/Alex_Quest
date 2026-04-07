@@ -327,13 +327,12 @@ export default function ChapterPage() {
       setActiveQuestion(0, chapterId);
       router.replace(`/reward/${chapterId}`);
     } else {
-      setQIndex((i) => {
-        setActiveQuestion(i + 1, chapterId);
-        return i + 1;
-      });
+      const next = qIndex + 1;
+      setQIndex(next);
+      setActiveQuestion(next, chapterId);
       resetMood();
     }
-  }, [isLast, chapterId, completeChapter, setActiveQuestion, router, resetMood]);
+  }, [isLast, qIndex, chapterId, completeChapter, setActiveQuestion, router, resetMood]);
 
   // ── Back button with confirmation ─────────────────────────────────
   const handleBack = useCallback(async () => {
@@ -416,6 +415,7 @@ export default function ChapterPage() {
           total={questions.length}
           options={currentQ.type === "choice" ? currentQ.options : undefined}
           blank={currentQ.type === "build" ? currentQ.blank : undefined}
+          targetSentence={currentQ.targetSentence}
         />
 
         {/* Assessment Feedback */}

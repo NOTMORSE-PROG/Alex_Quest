@@ -12,9 +12,11 @@ interface Props {
   options?: string[];
   /** For 'build' type: sentence with blank to display */
   blank?: string;
+  /** For 'speak' type: the target sentence shown for the student to read and repeat */
+  targetSentence?: string;
 }
 
-export function QuestionCard({ question, directions, hint, questionNumber, total, options, blank }: Props) {
+export function QuestionCard({ question, directions, hint, questionNumber, total, options, blank, targetSentence }: Props) {
   return (
     <MotiView
       from={{ opacity: 0, translateY: 20 }}
@@ -53,6 +55,14 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
         </View>
       )}
 
+      {/* Speak type: target sentence for student to read and repeat */}
+      {targetSentence && (
+        <View style={styles.targetBox}>
+          <Text style={styles.targetLabel}>📢 Say this</Text>
+          <Text style={styles.targetText}>{targetSentence}</Text>
+        </View>
+      )}
+
       {directions && (
         <View style={styles.directionsBox}>
           <Text style={styles.directionsLabel}>🎤 Directions</Text>
@@ -84,6 +94,30 @@ const styles = StyleSheet.create({
     color: colors.navy,
     textAlign: "center",
     lineHeight: 30,
+  },
+  targetBox: {
+    backgroundColor: `${colors.sky}18`,
+    borderRadius: 14,
+    padding: 14,
+    width: "100%",
+    borderWidth: 1.5,
+    borderColor: `${colors.sky}40`,
+    alignItems: "center",
+    gap: 6,
+  },
+  targetLabel: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.sky,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  targetText: {
+    fontFamily: fonts.display,
+    fontSize: 18,
+    color: colors.navy,
+    textAlign: "center",
+    lineHeight: 26,
   },
   directionsBox: {
     backgroundColor: `${colors.navy}0D`,

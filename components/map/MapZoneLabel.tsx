@@ -12,11 +12,11 @@ interface ZoneLabelData {
 }
 
 export const ZONE_LABELS: ZoneLabelData[] = [
-  { label: "Bakery District",   emoji: "🥐", y: 1650, accentColor: "#D97706", alignRight: false },
-  { label: "Fountain Square",   emoji: "⛲", y: 1270, accentColor: "#0EA5E9", alignRight: true  },
-  { label: "Greenwood Forest",  emoji: "🌲", y: 890,  accentColor: "#16A34A", alignRight: false },
-  { label: "Sunfield Farm",     emoji: "🌾", y: 510,  accentColor: "#CA8A04", alignRight: true  },
-  { label: "Enchanted Forest",  emoji: "✨", y: 130,  accentColor: "#15803D", alignRight: false },
+  { label: "Bakery District",      emoji: "🥐", y: 1650, accentColor: "#D97706", alignRight: false },
+  { label: "Fountain Square",      emoji: "⛲", y: 1270, accentColor: "#0EA5E9", alignRight: true  },
+  { label: "Farmlands of Plenty",  emoji: "🌾", y: 890,  accentColor: "#CA8A04", alignRight: false },
+  { label: "Countryside Forest",   emoji: "🌲", y: 510,  accentColor: "#16A34A", alignRight: true  },
+  { label: "The Jungle's Edge",    emoji: "🌴", y: 130,  accentColor: "#15803D", alignRight: false },
 ];
 
 interface Props {

@@ -9,7 +9,7 @@ import { useAudio } from "@/hooks/useAudio";
 
 const STORY_BEATS = [
   {
-    text: "Alex the parrot has crashed on a mysterious island far from home...",
+    text: "Alex the parrot fell from a truck and got lost in the city — far from his jungle home!",
     mood: "worried" as const,
   },
   {

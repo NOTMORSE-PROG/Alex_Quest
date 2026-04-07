@@ -30,12 +30,12 @@ import { useAudio } from "@/hooks/useAudio";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 
-// Gradient colors from top (Stage 5 — Enchanted Forest) to bottom (Stage 1 — Bakery)
+// Gradient colors from top (Stage 5 — The Jungle's Edge) to bottom (Stage 1 — Bakery)
 const BG_COLORS: [string, string, ...string[]] = [
-  "#1a0533",  // very top — deep enchanted purple
-  "#052e16",  // enchanted forest dark green
-  "#065f46",  // forest/farm transition
-  "#166534",  // greenwood forest
+  "#1a0533",  // very top — deep jungle canopy
+  "#052e16",  // jungle canopy green
+  "#065f46",  // countryside forest transition
+  "#166534",  // farmlands (rooster/scarecrow zone)
   "#1d4ed8",  // sky-blue tinge (fountain entry)
   "#0369a1",  // fountain blue
   "#0c4a6e",  // fountain deep

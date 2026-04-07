@@ -8,6 +8,7 @@ export interface Question {
   options?: string[]; // for 'choice' type — shown read-only, not tappable
   blank?: string; // for 'build' type, e.g. "The skunk ___ collecting food."
   fullSentenceExpected?: string; // for 'build' type — the complete sentence with blank filled
+  targetSentence?: string; // for 'speak' type — the sentence displayed on screen for the student to read and repeat
   expectedAnswer: string;
   acceptableAnswers?: string[]; // alternative correct phrasings
   rivalLine?: string; // for 'rival' type — the wrong sentence shown first
@@ -99,7 +100,7 @@ export const chapters: Chapter[] = [
         id: 1,
         type: "identify",
         prompt: "Is this a complete sentence? 'Skunk collecting food.'",
-        directions: "Say YES or NO aloud.",
+        directions: "Listen to the sentence. Is it a complete sentence? Say YES or NO aloud.",
         options: ["Yes", "No"],
         expectedAnswer: "No",
         hint: "A complete sentence needs a subject AND a verb that work together.",
@@ -123,8 +124,9 @@ export const chapters: Chapter[] = [
       {
         id: 3,
         type: "speak",
-        prompt: "Say the complete sentence clearly.",
-        directions: "Tap the microphone and speak the sentence out loud.",
+        prompt: "Say this sentence out loud.",
+        directions: "Tap the microphone and speak the sentence clearly.",
+        targetSentence: "The skunk is collecting food.",
         expectedAnswer: "The skunk is collecting food",
         acceptableAnswers: ["The skunk is collecting food."],
         hint: "Remember: subject + verb + what they are doing.",
@@ -207,7 +209,7 @@ export const chapters: Chapter[] = [
         id: 1,
         type: "identify",
         prompt: "'It fall back inside.' — Is this correct?",
-        directions: "Say YES or NO aloud.",
+        directions: "Listen to the sentence. Does the verb agree with the subject? Say YES or NO aloud.",
         options: ["Yes", "No"],
         expectedAnswer: "No",
         hint: "The subject 'it' is singular. What ending does a singular verb need?",
@@ -231,8 +233,9 @@ export const chapters: Chapter[] = [
       {
         id: 3,
         type: "speak",
-        prompt: "Say the correct sentence.",
+        prompt: "Say this sentence out loud.",
         directions: "Tap the microphone and say the sentence with the right verb.",
+        targetSentence: "It falls back inside.",
         expectedAnswer: "It falls back inside.",
         acceptableAnswers: ["It falls back inside"],
         hint: "It + falls = correct agreement!",
@@ -280,15 +283,15 @@ export const chapters: Chapter[] = [
   },
   {
     id: 3,
-    title: "Greenwood Forest",
-    location: "Forest",
+    title: "The Farmlands of Plenty",
+    location: "Farm",
     animal: "Rooster",
     animalEmoji: "🐓",
     learningObjective: "LO3: Verb Tense",
     loDescription: "Use correct verb tenses — past, present, and future",
-    accentColor: "chapter-forest",
-    accentColorHex: "#16A34A",
-    bgGradient: "from-green-900 via-green-700 to-green-500",
+    accentColor: "chapter-farmlands",
+    accentColorHex: "#CA8A04",
+    bgGradient: "from-yellow-900 via-yellow-700 to-yellow-500",
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     lessonVideo: require("../assets/videos/lesson-3.mp4"),
     lessonDescription:
@@ -326,7 +329,7 @@ export const chapters: Chapter[] = [
         id: 1,
         type: "identify",
         prompt: '"Alex fly to the fence." — Is the verb tense correct for a past event?',
-        directions: "Say YES or NO aloud.",
+        directions: "Listen to the sentence. Is the verb tense correct for a past event? Say YES or NO aloud.",
         options: ["Yes", "No"],
         expectedAnswer: "No",
         hint: "What happened already needs past tense. 'Fly' is present — what's the past?",
@@ -350,8 +353,9 @@ export const chapters: Chapter[] = [
       {
         id: 3,
         type: "speak",
-        prompt: "Say the complete sentence using correct past tense.",
+        prompt: "Say this sentence using the correct past tense.",
         directions: "Tap the microphone and speak the sentence out loud.",
+        targetSentence: "Alex flew to the fence.",
         expectedAnswer: "Alex flew to the fence.",
         acceptableAnswers: ["Alex flew to the fence"],
         hint: "flew = past tense of fly",
@@ -388,15 +392,15 @@ export const chapters: Chapter[] = [
   },
   {
     id: 4,
-    title: "Sunfield Farm",
-    location: "Farm",
+    title: "The Countryside Forest",
+    location: "Forest",
     animal: "Owl",
     animalEmoji: "🦉",
     learningObjective: "LO4: Word Forms",
     loDescription: "Use correct word forms — nouns, verbs, and adjectives",
-    accentColor: "chapter-farm",
-    accentColorHex: "#CA8A04",
-    bgGradient: "from-yellow-900 via-yellow-700 to-yellow-500",
+    accentColor: "chapter-countryside",
+    accentColorHex: "#16A34A",
+    bgGradient: "from-green-900 via-green-700 to-green-500",
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     lessonVideo: require("../assets/videos/lesson-4.mp4"),
     lessonDescription:
@@ -434,7 +438,7 @@ export const chapters: Chapter[] = [
         id: 1,
         type: "identify",
         prompt: '"Alex is a bravefully bird." — Is the word form correct?',
-        directions: "Say YES or NO aloud.",
+        directions: "Listen to the sentence. Is the word form correct? Say YES or NO aloud.",
         options: ["Yes", "No"],
         expectedAnswer: "No",
         hint: "'Bravefully' is not a real word. We need an adjective here, not an adverb.",
@@ -458,8 +462,9 @@ export const chapters: Chapter[] = [
       {
         id: 3,
         type: "speak",
-        prompt: "Say the complete sentence using the correct word form.",
+        prompt: "Say this sentence using the correct word form.",
         directions: "Tap the microphone and speak clearly.",
+        targetSentence: "Alex is a brave bird.",
         expectedAnswer: "Alex is a brave bird.",
         acceptableAnswers: ["Alex is a brave bird"],
         hint: "Adjectives describe nouns. 'Brave' describes 'bird'.",
@@ -495,13 +500,13 @@ export const chapters: Chapter[] = [
   },
   {
     id: 5,
-    title: "The Enchanted Forest",
-    location: "Enchanted Forest",
+    title: "The Jungle's Edge",
+    location: "Jungle",
     animal: "Parrot",
     animalEmoji: "🦜",
     learningObjective: "LO5: Full Application",
     loDescription: "Apply all grammar skills: sentences, agreement, tense, and word forms",
-    accentColor: "chapter-enchanted",
+    accentColor: "chapter-jungle",
     accentColorHex: "#15803D",
     bgGradient: "from-emerald-950 via-emerald-800 to-violet-800",
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -569,8 +574,9 @@ export const chapters: Chapter[] = [
       {
         id: 3,
         type: "speak",
-        prompt: "Say the complete sentence.",
+        prompt: "Say this sentence out loud.",
         directions: "Tap the microphone and speak the sentence clearly.",
+        targetSentence: "Alex helped many animals.",
         expectedAnswer: "Alex helped many animals.",
         acceptableAnswers: ["Alex helped many animals"],
         hint: "helped = past tense of help",
