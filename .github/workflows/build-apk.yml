@@ -158,26 +158,40 @@ jobs:
           APK_PATH="${{ steps.gradle.outputs.apk_path }}"
           cp "$APK_PATH" ${{ steps.meta.outputs.apk_name }}
 
-      - name: Delete existing release and tag
-        run: gh release delete latest --cleanup-tag --yes || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Alex's Quest — Latest Build"
-          body: |
-            **Branch:** `${{ steps.meta.outputs.branch }}`
-            **Commit:** `${{ steps.meta.outputs.short_sha }}`
-            **Message:** ${{ steps.meta.outputs.commit_msg }}
-            **Build type:** `${{ steps.meta.outputs.build_type }}`
-            **Built:** ${{ steps.meta.outputs.timestamp }}
-          files: ${{ steps.meta.outputs.apk_name }}
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          APK_NAME="${{ steps.meta.outputs.apk_name }}"
+          NOTES=$(cat <<EOF
+          **Branch:** \`${{ steps.meta.outputs.branch }}\`
+          **Commit:** \`${{ steps.meta.outputs.short_sha }}\`
+          **Message:** ${{ steps.meta.outputs.commit_msg }}
+          **Build type:** \`${{ steps.meta.outputs.build_type }}\`
+          **Built:** ${{ steps.meta.outputs.timestamp }}
+          EOF
+          )
+
+          if gh release view latest >/dev/null 2>&1; then
+            echo "Release 'latest' exists — clearing old assets and updating notes."
+            gh release view latest --json assets --jq '.assets[].name' | while read -r asset; do
+              [ -n "$asset" ] && gh release delete-asset latest "$asset" --yes || true
+            done
+            gh release edit latest \
+              --title "Alex's Quest — Latest Build" \
+              --notes "$NOTES" \
+              --prerelease=false
+          else
+            echo "Release 'latest' does not exist — creating it."
+            gh release create latest \
+              --title "Alex's Quest — Latest Build" \
+              --notes "$NOTES" \
+              --target "${{ github.event.workflow_run.head_sha || github.sha }}"
+          fi
+
+          echo "Uploading $APK_NAME..."
+          gh release upload latest "$APK_NAME" --clobber
 
       - name: Build summary
         if: always()
