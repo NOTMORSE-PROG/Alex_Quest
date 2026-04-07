@@ -73,6 +73,20 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Download Whisper model
+        run: |
+          mkdir -p assets/models
+          MODEL_PATH="assets/models/ggml-base.en-q5_1.bin"
+          MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin"
+          echo "Downloading Whisper base.en q5_1 model..."
+          curl -L --fail --retry 3 --retry-delay 5 -o "$MODEL_PATH" "$MODEL_URL"
+          SIZE=$(stat --printf="%s" "$MODEL_PATH")
+          echo "Downloaded $((SIZE / 1048576))MB to $MODEL_PATH"
+          if [ "$SIZE" -lt 100000000 ]; then
+            echo "::error::Model file is suspiciously small ($SIZE bytes) — aborting."
+            exit 1
+          fi
+
       - name: Generate native project
         run: npx expo prebuild --clean --platform android
 

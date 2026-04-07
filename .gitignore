@@ -51,3 +51,6 @@ components/*.backup.tsx
 *.pdf
 *.doc
 *.docx
+
+# Whisper model (downloaded at build time, too large for git)
+assets/models/*.bin
