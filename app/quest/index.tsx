@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
+import { VideoPlayer } from "@/components/VideoPlayer";
+import { questPrologueVideo } from "@/lib/chaptersData";
 import { colors, fonts } from "@/lib/theme";
 import { useGameStore } from "@/store/gameStore";
 import { useAudio } from "@/hooks/useAudio";
@@ -25,6 +27,7 @@ const STORY_BEATS = [
 export default function QuestPage() {
   const router = useRouter();
   const [beat, setBeat] = useState(0);
+  const [showVideo, setShowVideo] = useState(true);
   const { startQuest } = useGameStore();
   const { playSFX } = useAudio();
 
@@ -40,6 +43,20 @@ export default function QuestPage() {
       setBeat((b) => b + 1);
     }
   };
+
+  if (showVideo) {
+    return (
+      <View style={styles.container}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "#000" }]} />
+        <VideoPlayer
+          source={questPrologueVideo}
+          onEnd={() => setShowVideo(false)}
+          onSkip={() => setShowVideo(false)}
+          showSkip
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

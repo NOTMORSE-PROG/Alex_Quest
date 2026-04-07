@@ -50,6 +50,8 @@ export interface Chapter {
 // Intro clip played before reaching the home screen
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const introVideo = require("../assets/videos/intro.mp4");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const questPrologueVideo = require("../assets/videos/quest-prologue.mp4");
 
 export const chapters: Chapter[] = [
   {
