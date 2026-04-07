@@ -11,10 +11,12 @@ export default function SplashScreen() {
   const { tutorialCompleted, introWatched } = useGameStore();
 
   useEffect(() => {
+    if (!introWatched) {
+      router.replace("/intro");
+      return;
+    }
     const t = setTimeout(() => {
-      if (!introWatched) {
-        router.replace("/intro");
-      } else if (!tutorialCompleted) {
+      if (!tutorialCompleted) {
         router.replace("/tutorial");
       } else {
         router.replace("/home");
