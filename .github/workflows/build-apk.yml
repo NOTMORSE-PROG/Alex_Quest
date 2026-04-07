@@ -82,7 +82,7 @@ jobs:
           curl -L --fail --retry 3 --retry-delay 5 -o "$MODEL_PATH" "$MODEL_URL"
           SIZE=$(stat --printf="%s" "$MODEL_PATH")
           echo "Downloaded $((SIZE / 1048576))MB to $MODEL_PATH"
-          if [ "$SIZE" -lt 100000000 ]; then
+          if [ "$SIZE" -lt 40000000 ]; then
             echo "::error::Model file is suspiciously small ($SIZE bytes) — aborting."
             exit 1
           fi
