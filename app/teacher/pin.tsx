@@ -54,7 +54,10 @@ export default function PinScreen() {
   return (
     <Pressable
       style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
-      onPress={() => inputRef.current?.focus()}
+      onPress={() => {
+        inputRef.current?.blur();
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }}
     >
       <Pressable style={styles.cancelBtn} onPress={() => router.back()}>
         <Text style={styles.cancelText}>Cancel</Text>
@@ -88,7 +91,9 @@ export default function PinScreen() {
         <Text style={styles.hint}>Tap to open keyboard</Text>
       </View>
 
-      {/* Hidden input that drives the keyboard */}
+      {/* Offscreen input that drives the keyboard.
+          Note: opacity:0 prevents the Android soft keyboard from opening,
+          so we position it offscreen instead. */}
       <TextInput
         ref={inputRef}
         style={styles.hiddenInput}
@@ -98,6 +103,8 @@ export default function PinScreen() {
         onChangeText={handleChange}
         value={pin}
         caretHidden
+        autoFocus
+        showSoftInputOnFocus
       />
     </Pressable>
   );
@@ -153,8 +160,10 @@ const styles = StyleSheet.create({
   },
   hiddenInput: {
     position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
+    top: -1000,
+    left: 0,
+    width: 40,
+    height: 40,
+    color: "transparent",
   },
 });
