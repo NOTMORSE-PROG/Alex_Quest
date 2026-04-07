@@ -61,6 +61,9 @@ export default function ChapterPage() {
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   // "no-speech" shown when Whisper returns empty — user must try again
   const [noSpeechError, setNoSpeechError] = useState(false);
+  // Multi-phase loading label during assessment
+  type AnalyzePhase = "transcribing" | "scoring" | null;
+  const [analyzePhase, setAnalyzePhase] = useState<AnalyzePhase>(null);
 
   // Auto-stop recording after timeout
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,6 +129,25 @@ export default function ChapterPage() {
   const handleAssess = useCallback(async (audioUri: string | null) => {
     if (!currentQ || feedback) return;
 
+    // ── Guard: no audio captured ──
+    if (!audioUri) {
+      setNoSpeechError(true);
+      return;
+    }
+
+    // ── Guard: audio file too small to contain real speech ──
+    // Android m4a @64kbps ≈ 8KB/s; iOS WAV @16kHz ≈ 32KB/s.
+    // Under 8KB means a failed or sub-0.5s recording — skip Whisper.
+    try {
+      const info = await FileSystem.getInfoAsync(audioUri, { size: true });
+      if (info.exists && (info as { size?: number }).size != null && (info as { size: number }).size < 8_000) {
+        console.warn(`${TAG} audio file too small (${(info as { size: number }).size} bytes) — showing no-speech error`);
+        setNoSpeechError(true);
+        cleanupAudioFile(audioUri);
+        return;
+      }
+    } catch { /* non-critical — proceed to assess */ }
+
     setIsAnalyzing(true);
     setNoSpeechError(false);
     console.log(`${TAG} handleAssess — qType=${currentQ.type} audioUri=${audioUri}`);
@@ -135,16 +157,25 @@ export default function ChapterPage() {
         ? currentQ.fullSentenceExpected
         : currentQ.expectedAnswer;
 
+    // Whisper transcription with 15-second timeout to prevent hangs on slow devices
+    const transcribeWithTimeout = (uri: string) =>
+      Promise.race([
+        whisper.transcribe(uri),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("Transcription timed out")), 15_000)
+        ),
+      ]);
+
     let result: AssessmentResult;
 
     try {
       // ── identify: simple YES/NO check, no phoneme assessment ──
       if (currentQ.type === "identify") {
-        // Increment attempt only when we actually have audio to assess
         incrementAttemptCount(chapterId, currentQ.id);
         let transcript = "";
-        if (whisper.isReady && audioUri) {
-          const wr = await whisper.transcribe(audioUri);
+        if (whisper.isReady) {
+          setAnalyzePhase("transcribing");
+          const wr = await transcribeWithTimeout(audioUri);
           transcript = wr?.text ?? "";
         }
         console.log(`${TAG} identify transcript="${transcript}" expected="${expected}"`);
@@ -158,41 +189,44 @@ export default function ChapterPage() {
         console.log(`${TAG} identify result — passed=${passed}`);
       }
       // ── all other types: full phoneme assessment ──
-      else if (whisper.isReady && audioUri) {
+      else if (whisper.isReady) {
         console.log(`${TAG} using Whisper for assessment`);
-        const whisperResult = await whisper.transcribe(audioUri);
+        setAnalyzePhase("transcribing");
+        const whisperResult = await transcribeWithTimeout(audioUri);
 
         // Empty transcript — Whisper couldn't hear speech. Don't count as attempt.
         if (!whisperResult || !whisperResult.text.trim()) {
           console.warn(`${TAG} Whisper returned empty — showing no-speech error`);
           setNoSpeechError(true);
-          setIsAnalyzing(false);
-          if (audioUri) cleanupAudioFile(audioUri);
-          return; // ← exit without saving score or incrementing attempt
+          cleanupAudioFile(audioUri);
+          return;
         }
 
-        // We have content — increment attempt now
-        incrementAttemptCount(chapterId, currentQ.id);
+        // We have content — increment attempt and score
+        setAnalyzePhase("scoring");
+        const newAttemptCount = incrementAttemptCount(chapterId, currentQ.id);
         result = assessAnswer(
           whisperResult,
           expected,
           currentQ.acceptableAnswers,
           currentQ.type,
-          attemptNum - 1
+          newAttemptCount - 1
         );
         console.log(`${TAG} Whisper assessment — passed=${result.passed} score=${result.overallScore}`);
       } else {
         // No Whisper available — use fallback (still counts as attempt)
-        incrementAttemptCount(chapterId, currentQ.id);
+        setAnalyzePhase("scoring");
+        const newAttemptCount = incrementAttemptCount(chapterId, currentQ.id);
         console.warn(`${TAG} Whisper not ready — using fallback path`);
-        result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
+        result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, newAttemptCount - 1);
       }
     } catch (e) {
       console.error(`${TAG} assessment threw:`, e);
-      const attemptNum = incrementAttemptCount(chapterId, currentQ.id);
-      result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, attemptNum - 1);
+      const newAttemptCount = incrementAttemptCount(chapterId, currentQ.id);
+      result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, newAttemptCount - 1);
     } finally {
       setIsAnalyzing(false);
+      setAnalyzePhase(null);
     }
 
     // Save recording for playback
@@ -440,6 +474,7 @@ export default function ChapterPage() {
               error={recorder.error}
               questionType={currentQ.type}
               isAnalyzing={isAnalyzing}
+              analyzePhase={analyzePhase}
             />
           </View>
         )}
