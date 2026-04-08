@@ -14,6 +14,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import * as FileSystem from "expo-file-system/legacy";
+import { Asset } from "expo-asset";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { WhisperResult, WhisperSegment } from "@/types/assessment";
 
@@ -57,6 +58,15 @@ const HALLUCINATIONS = new Set([
   "coughing", "breathing", "footsteps", "clapping", "whistling",
   "snoring", "screaming",
 ]);
+
+// ── Model assets — referenced at module top level so Metro can statically
+// resolve them in Hermes release builds (same pattern as PronounceRight).
+// Use relative paths, NOT the @/ alias — Metro may not resolve aliases
+// correctly for binary assets in release/Hermes builds.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const WHISPER_ASSET = require("../assets/models/ggml-base.en-q5_1.bin");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const VAD_ASSET = require("../assets/models/ggml-silero-v6.2.0.bin");
 
 // ── Model Configuration ───────────────────────────────────────────────
 
@@ -121,7 +131,6 @@ async function ensureAssetCopied(
   const info = await FileSystem.getInfoAsync(destPath);
   if (info.exists) return destPath;
 
-  const { Asset } = await import("expo-asset");
   const asset = Asset.fromModule(assetModule);
   await asset.downloadAsync();
   if (!asset.localUri) throw new Error("Asset localUri unavailable after downloadAsync");
@@ -170,16 +179,8 @@ export function ensureWhisperReady(): Promise<void> {
       stage = "extract-assets";
       console.log(`${TAG} extracting bundled models…`);
       const [whisperPath, vadPath] = await Promise.all([
-        ensureAssetCopied(
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require("@/assets/models/ggml-base.en-q5_1.bin"),
-          WHISPER_DEST
-        ),
-        ensureAssetCopied(
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require("@/assets/models/ggml-silero-v6.2.0.bin"),
-          VAD_DEST
-        ).catch((e) => {
+        ensureAssetCopied(WHISPER_ASSET, WHISPER_DEST),
+        ensureAssetCopied(VAD_ASSET, VAD_DEST).catch((e) => {
           // VAD is optional — log and continue without it.
           console.warn(`${TAG} VAD asset extract failed:`, e);
           return null;
