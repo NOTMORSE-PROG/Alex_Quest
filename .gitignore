@@ -52,5 +52,4 @@ components/*.backup.tsx
 *.doc
 *.docx
 
-# Whisper model (downloaded at build time, too large for git)
-assets/models/*.bin
+# Model files are tracked via Git LFS (see .gitattributes)

@@ -1,24 +1,30 @@
 /**
- * On-device Whisper speech-to-text hook.
+ * On-device Whisper speech-to-text hook (Bench / Alex's Quest).
  *
- * Model loading priority:
- *   1. Bundled asset at assets/models/ggml-base.en-q5_1.bin (offline, preferred)
- *   2. Download from HuggingFace on first run (requires internet, cached after)
- *   3. If neither works → isReady stays false, assessment uses fallback path
+ * Loader strategy — ported from PronounceRight (the sister project that already
+ * works reliably). Both Whisper and Silero VAD models are bundled inside the APK
+ * via Metro's `assetExts.push('bin')`. On first launch we copy them once from the
+ * bundle into `documentDirectory/whisper-models/` and reuse on every subsequent
+ * launch. There is intentionally NO HuggingFace download fallback — if the model
+ * isn't in the APK that's a CI/build bug we want to surface, not paper over.
+ *
+ * The actual init runs once at app startup (module-level singleton) and is shared
+ * across every component that calls `useWhisper()`. The hook just subscribes to
+ * the singleton's state.
  */
-
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import * as FileSystem from "expo-file-system/legacy";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { WhisperResult, WhisperSegment } from "@/types/assessment";
 
-// whisper.rn doesn't expose a root "." export — import directly from compiled output
+// whisper.rn doesn't expose a clean root export in 0.5.5 — import from compiled output.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { initWhisper } = require("whisper.rn/lib/commonjs/index") as {
+const whisperRn = require("whisper.rn/lib/commonjs/index") as {
   initWhisper: (options: { filePath: string }) => Promise<WhisperContext>;
+  initWhisperVad?: (options: { filePath: string }) => Promise<WhisperVadContext>;
 };
 
-// Inline types (avoids broken module path resolution for whisper.rn)
-// NOTE: ctx.transcribe() returns { stop, promise }, NOT a direct Promise.
+// Inline types — avoids broken module path resolution for whisper.rn
 interface WhisperContext {
   transcribe(
     audioUri: string,
@@ -33,9 +39,15 @@ interface WhisperContext {
   release(): Promise<void>;
 }
 
+interface WhisperVadContext {
+  detectSpeech(audioUri: string): Promise<{ t0: number; t1: number }[]>;
+  release?: () => Promise<void>;
+}
+
 const TAG = "[useWhisper]";
 
-// Known Whisper hallucination strings (from PronounceRight reference impl)
+// Known Whisper hallucination strings (from PronounceRight reference impl).
+// NOTE: deliberately does NOT include "yes" / "no" — those are valid identify answers.
 const HALLUCINATIONS = new Set([
   "thank you", "thank you.", "thanks for watching", "thanks for watching.",
   "please subscribe", "please subscribe.", "like and subscribe",
@@ -48,225 +60,318 @@ const HALLUCINATIONS = new Set([
 
 // ── Model Configuration ───────────────────────────────────────────────
 
-const MODEL_FILENAME = "ggml-base.en-q5_1.bin";
 const MODEL_DIR = `${FileSystem.documentDirectory}whisper-models/`;
-const MODEL_PATH = `${MODEL_DIR}${MODEL_FILENAME}`;
-const MODEL_DOWNLOAD_URL =
-  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin";
+const WHISPER_DEST = `${MODEL_DIR}ggml-base.en-q5_1.bin`;
+const VAD_DEST = `${MODEL_DIR}ggml-silero-v6.2.0.bin`;
 
-// ── Types ─────────────────────────────────────────────────────────────
+const DIAG_KEY = "whisper:lastError";
+
+// ── Public state shape (kept compatible with the old hook API) ────────
 
 export interface WhisperState {
   isReady: boolean;
   isLoading: boolean;
+  /** @deprecated retained for API compatibility — always 0 (no network download). */
   downloadProgress: number;
   error: string | null;
   transcribe: (audioUri: string) => Promise<WhisperResult | null>;
   isTranscribing: boolean;
+  retry: () => void;
 }
 
-// ── Hook ─────────────────────────────────────────────────────────────
+// ── Module-level singleton ────────────────────────────────────────────
+//
+// We share a single in-flight init across the whole app. The hook below just
+// subscribes to changes via React state. This way mounting useWhisper in two
+// places never re-runs initialization, and pre-warming from _layout.tsx is
+// effectively free for any screen that mounts later.
 
-export function useWhisper(): WhisperState {
-  const contextRef = useRef<WhisperContext | null>(null);
-  const [isReady, setIsReady] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+interface SingletonState {
+  status: "idle" | "loading" | "ready" | "error";
+  whisperCtx: WhisperContext | null;
+  vadCtx: WhisperVadContext | null;
+  errorMessage: string | null;
+}
 
-  useEffect(() => {
-    let cancelled = false;
+let singleton: SingletonState = {
+  status: "idle",
+  whisperCtx: null,
+  vadCtx: null,
+  errorMessage: null,
+};
 
-    async function init() {
-      setIsLoading(true);
-      setError(null);
-      console.log(`${TAG} init started`);
+let inFlight: Promise<void> | null = null;
+const listeners = new Set<() => void>();
 
-      try {
-        // Ensure model directory exists
-        const dirInfo = await FileSystem.getInfoAsync(MODEL_DIR);
-        if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(MODEL_DIR, { intermediates: true });
+function notify() {
+  for (const l of listeners) l();
+}
+
+function setSingleton(next: Partial<SingletonState>) {
+  singleton = { ...singleton, ...next };
+  notify();
+}
+
+/** Copy a bundled `.bin` asset to a stable on-disk path on first run. Idempotent. */
+async function ensureAssetCopied(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assetModule: any,
+  destPath: string
+): Promise<string> {
+  const info = await FileSystem.getInfoAsync(destPath);
+  if (info.exists) return destPath;
+
+  const { Asset } = await import("expo-asset");
+  const asset = Asset.fromModule(assetModule);
+  await asset.downloadAsync();
+  if (!asset.localUri) throw new Error("Asset localUri unavailable after downloadAsync");
+  await FileSystem.copyAsync({ from: asset.localUri, to: destPath });
+  return destPath;
+}
+
+async function recordDiagnostic(stage: string, err: unknown) {
+  try {
+    const free = await FileSystem.getFreeDiskStorageAsync().catch(() => null);
+    const payload = {
+      stage,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      freeDiskBytes: free,
+      ts: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem(DIAG_KEY, JSON.stringify(payload));
+  } catch {
+    /* diagnostics are best-effort */
+  }
+}
+
+/**
+ * Run the loader once. Subsequent calls return the existing in-flight promise
+ * or resolve immediately if init has already finished. Safe to call from app
+ * startup AND from individual screens — only one init will actually run.
+ */
+export function ensureWhisperReady(): Promise<void> {
+  if (singleton.status === "ready") return Promise.resolve();
+  if (inFlight) return inFlight;
+
+  setSingleton({ status: "loading", errorMessage: null });
+
+  inFlight = (async () => {
+    let stage = "init";
+    try {
+      // Make sure the destination directory exists.
+      stage = "mkdir";
+      const dirInfo = await FileSystem.getInfoAsync(MODEL_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(MODEL_DIR, { intermediates: true });
+      }
+
+      // Extract both models from the APK bundle in parallel (first launch only).
+      stage = "extract-assets";
+      console.log(`${TAG} extracting bundled models…`);
+      const [whisperPath, vadPath] = await Promise.all([
+        ensureAssetCopied(
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require("@/assets/models/ggml-base.en-q5_1.bin"),
+          WHISPER_DEST
+        ),
+        ensureAssetCopied(
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require("@/assets/models/ggml-silero-v6.2.0.bin"),
+          VAD_DEST
+        ).catch((e) => {
+          // VAD is optional — log and continue without it.
+          console.warn(`${TAG} VAD asset extract failed:`, e);
+          return null;
+        }),
+      ]);
+
+      // Initialize whisper + (optional) VAD contexts in parallel.
+      stage = "init-context";
+      console.log(`${TAG} initializing whisper context…`);
+      const [whisperCtx, vadCtx] = await Promise.all([
+        whisperRn.initWhisper({ filePath: whisperPath }),
+        vadPath && whisperRn.initWhisperVad
+          ? whisperRn.initWhisperVad({ filePath: vadPath }).catch((e) => {
+              console.warn(`${TAG} VAD init failed (continuing without VAD):`, e);
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
+
+      setSingleton({
+        status: "ready",
+        whisperCtx,
+        vadCtx,
+        errorMessage: null,
+      });
+      console.log(`${TAG} ready (vad=${vadCtx ? "yes" : "no"})`);
+    } catch (e) {
+      const message =
+        e instanceof Error ? `${stage}: ${e.message}` : `${stage}: ${String(e)}`;
+      console.error(`${TAG} init failed at stage=${stage}:`, e);
+      void recordDiagnostic(stage, e);
+      setSingleton({ status: "error", errorMessage: message });
+    } finally {
+      inFlight = null;
+    }
+  })();
+
+  return inFlight;
+}
+
+/** Re-run init from scratch (e.g. user tapped a retry button). */
+export function retryWhisperInit(): void {
+  if (singleton.status === "loading") return;
+  setSingleton({ status: "idle", errorMessage: null });
+  void ensureWhisperReady();
+}
+
+// ── Transcription helpers (used by the hook) ──────────────────────────
+
+async function getSpeechOffsetMs(
+  vadCtx: WhisperVadContext | null,
+  uri: string
+): Promise<number> {
+  if (!vadCtx) return 0;
+  try {
+    const segs = await vadCtx.detectSpeech(uri);
+    if (!segs || segs.length === 0) return 0;
+    // Trim leading silence with 200ms padding (VAD t0 is in ms).
+    return Math.max(0, segs[0].t0 - 200);
+  } catch (e) {
+    console.warn(`${TAG} VAD detectSpeech threw — proceeding without offset:`, e);
+    return 0;
+  }
+}
+
+async function transcribeImpl(audioUri: string): Promise<WhisperResult | null> {
+  const ctx = singleton.whisperCtx;
+  if (!ctx) {
+    console.warn(`${TAG} transcribe called but context not ready`);
+    return null;
+  }
+
+  const uri = audioUri.startsWith("file://") ? audioUri : `file://${audioUri}`;
+  console.log(`${TAG} transcribe started uri=${uri}`);
+
+  // VAD is a SOFT signal — we always run Whisper. VAD only contributes a
+  // leading-silence offset when it's confident.
+  const offsetMs = await getSpeechOffsetMs(singleton.vadCtx, uri);
+
+  try {
+    const opts: Record<string, unknown> = {
+      language: "en",
+      maxLen: 1,
+      tdrzEnable: false,
+      temperature: 0,
+      temperatureInc: 0,
+      beamSize: 5,
+      // Slightly looser than 0.4 — single-syllable answers like "no" were
+      // being classified as silence on quieter mics.
+      noSpeechThold: 0.3,
+      logprobThold: -0.7,
+      suppressNonSpeechTokens: true,
+    };
+    if (offsetMs > 0) opts.offset = offsetMs;
+
+    const { promise } = ctx.transcribe(uri, opts);
+    const result = await promise;
+
+    if (!result?.result) {
+      console.warn(`${TAG} transcribe returned empty result`);
+      return null;
+    }
+
+    const text = result.result.trim();
+    console.log(`${TAG} transcribe result: "${text}"`);
+
+    if (/^\[[\w\s]+\]$/.test(text)) {
+      console.warn(`${TAG} detected whisper special token: "${text}"`);
+      return null;
+    }
+
+    const cleaned = text.toLowerCase().replace(/[^a-z\s']/g, "").trim();
+    if (HALLUCINATIONS.has(cleaned)) {
+      console.warn(`${TAG} detected hallucination: "${text}"`);
+      return null;
+    }
+
+    const segments: WhisperSegment[] = [];
+    if (result.segments) {
+      for (const seg of result.segments) {
+        const words = seg.text.trim().split(/\s+/);
+        const segDuration = seg.t1 - seg.t0;
+        const wordDuration = segDuration / Math.max(words.length, 1);
+        for (let i = 0; i < words.length; i++) {
+          const word = words[i].replace(/[^a-zA-Z'-]/g, "");
+          if (!word) continue;
+          segments.push({
+            word,
+            confidence: seg.avgProb ?? 0.8,
+            start: (seg.t0 + i * wordDuration) / 100,
+            end: (seg.t0 + (i + 1) * wordDuration) / 100,
+          });
         }
-
-        // Check if model already cached on disk
-        let modelPath = MODEL_PATH;
-        const modelInfo = await FileSystem.getInfoAsync(MODEL_PATH);
-
-        if (!modelInfo.exists) {
-          // Try bundled asset first (works offline)
-          let bundledCopied = false;
-          try {
-            const { Asset } = await import("expo-asset");
-            // If the model is placed at assets/models/ggml-base.en-q5_1.bin
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const asset = Asset.fromModule(require("@/assets/models/ggml-base.en-q5_1.bin"));
-            await asset.downloadAsync();
-            if (asset.localUri) {
-              await FileSystem.copyAsync({ from: asset.localUri, to: MODEL_PATH });
-              bundledCopied = true;
-              console.log(`${TAG} bundled model copied to: ${MODEL_PATH}`);
-            }
-          } catch {
-            console.log(`${TAG} no bundled model found, will try download`);
-          }
-
-          if (!bundledCopied) {
-            // Fallback: download from HuggingFace
-            console.log(`${TAG} downloading model from HuggingFace...`);
-            const downloadResumable = FileSystem.createDownloadResumable(
-              MODEL_DOWNLOAD_URL,
-              MODEL_PATH,
-              {},
-              (progress) => {
-                if (!cancelled) {
-                  const pct = progress.totalBytesExpectedToWrite > 0
-                    ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite
-                    : 0;
-                  setDownloadProgress(pct);
-                  if (Math.round(pct * 100) % 10 === 0) {
-                    console.log(`${TAG} download progress: ${Math.round(pct * 100)}%`);
-                  }
-                }
-              }
-            );
-            const result = await downloadResumable.downloadAsync();
-            if (!result || cancelled) {
-              console.warn(`${TAG} download cancelled or failed`);
-              return;
-            }
-            modelPath = result.uri;
-            console.log(`${TAG} model downloaded to: ${modelPath}`);
-          }
-        } else {
-          console.log(`${TAG} model already cached at: ${MODEL_PATH}`);
-        }
-
-        if (cancelled) return;
-
-        console.log(`${TAG} initializing Whisper context...`);
-        const ctx = await initWhisper({ filePath: modelPath });
-
-        if (cancelled) {
-          await ctx.release();
-          return;
-        }
-
-        contextRef.current = ctx;
-        setIsReady(true);
-        console.log(`${TAG} ready`);
-      } catch (e) {
-        if (!cancelled) {
-          console.error(`${TAG} init failed:`, e);
-          // Don't set error state — chapter page should still work via fallback
-          // setError(e instanceof Error ? e.message : "Failed to initialize Whisper");
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
     }
 
-    init();
+    if (segments.length === 0 && text) {
+      const words = text.split(/\s+/).filter(Boolean);
+      const wordDur = 8 / Math.max(words.length, 1);
+      for (let i = 0; i < words.length; i++) {
+        segments.push({
+          word: words[i].replace(/[^a-zA-Z'-]/g, ""),
+          confidence: 0.8,
+          start: i * wordDur,
+          end: (i + 1) * wordDur,
+        });
+      }
+    }
 
+    console.log(`${TAG} transcribe parsed ${segments.length} word segments`);
+    return { text, segments };
+  } catch (e) {
+    console.error(`${TAG} transcribe threw:`, e);
+    return null;
+  }
+}
+
+// ── React hook ────────────────────────────────────────────────────────
+
+export function useWhisper(): WhisperState {
+  const [, force] = useState(0);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  // Subscribe to singleton state changes.
+  useEffect(() => {
+    const tick = () => force((n) => n + 1);
+    listeners.add(tick);
+    // Kick off init if nothing else has yet.
+    void ensureWhisperReady();
     return () => {
-      cancelled = true;
-      contextRef.current?.release();
-      contextRef.current = null;
+      listeners.delete(tick);
     };
   }, []);
 
   const transcribe = useCallback(async (audioUri: string): Promise<WhisperResult | null> => {
-    const ctx = contextRef.current;
-    if (!ctx) {
-      console.warn(`${TAG} transcribe called but context not ready`);
-      return null;
-    }
-
     setIsTranscribing(true);
-    console.log(`${TAG} transcribe started for uri=${audioUri}`);
-
     try {
-      // whisper.rn transcribe returns { stop, promise }, NOT a direct Promise
-      const { promise } = ctx.transcribe(audioUri, {
-        language: "en",
-        maxLen: 1,
-        tdrzEnable: false,
-        temperature: 0,
-        temperatureInc: 0,
-        beamSize: 1,
-        noSpeechThold: 0.4,
-        logprobThold: -0.7,
-        suppressNonSpeechTokens: true,
-        tokenTimestamps: true,
-      });
-      const result = await promise;
-
-      if (!result?.result) {
-        console.warn(`${TAG} transcribe returned empty result`);
-        return null;
-      }
-
-      const text = result.result.trim();
-      console.log(`${TAG} transcribe result: "${text}"`);
-
-      // Check for Whisper special tokens like [BLANK_AUDIO]
-      if (/^\[[\w\s]+\]$/.test(text)) {
-        console.warn(`${TAG} detected Whisper special token: "${text}"`);
-        return null;
-      }
-
-      // Check for known hallucinations
-      const cleaned = text.toLowerCase().replace(/[^a-z\s']/g, "").trim();
-      if (HALLUCINATIONS.has(cleaned)) {
-        console.warn(`${TAG} detected hallucination: "${text}"`);
-        return null;
-      }
-
-      const segments: WhisperSegment[] = [];
-
-      if (result.segments) {
-        for (const seg of result.segments) {
-          const words = seg.text.trim().split(/\s+/);
-          const segDuration = seg.t1 - seg.t0;
-          const wordDuration = segDuration / Math.max(words.length, 1);
-
-          for (let i = 0; i < words.length; i++) {
-            const word = words[i].replace(/[^a-zA-Z'-]/g, "");
-            if (!word) continue;
-            segments.push({
-              word,
-              confidence: seg.avgProb ?? 0.8,
-              start: (seg.t0 + i * wordDuration) / 100,
-              end: (seg.t0 + (i + 1) * wordDuration) / 100,
-            });
-          }
-        }
-      }
-
-      // Fallback segments if none parsed
-      if (segments.length === 0 && text) {
-        const words = text.split(/\s+/).filter(Boolean);
-        const wordDur = 8 / Math.max(words.length, 1);
-        for (let i = 0; i < words.length; i++) {
-          segments.push({
-            word: words[i].replace(/[^a-zA-Z'-]/g, ""),
-            confidence: 0.8,
-            start: i * wordDur,
-            end: (i + 1) * wordDur,
-          });
-        }
-      }
-
-      console.log(`${TAG} transcribe parsed ${segments.length} word segments`);
-      return { text, segments };
-    } catch (e) {
-      console.error(`${TAG} transcribe threw:`, e);
-      return null;
+      return await transcribeImpl(audioUri);
     } finally {
       setIsTranscribing(false);
     }
   }, []);
 
-  return { isReady, isLoading, downloadProgress, error, transcribe, isTranscribing };
+  const retry = useCallback(() => retryWhisperInit(), []);
+
+  return {
+    isReady: singleton.status === "ready",
+    isLoading: singleton.status === "loading" || singleton.status === "idle",
+    downloadProgress: 0,
+    error: singleton.status === "error" ? singleton.errorMessage : null,
+    transcribe,
+    isTranscribing,
+    retry,
+  };
 }

@@ -8,6 +8,7 @@ import { useFonts } from "expo-font";
 import { AppState, ScrollView, Text, View } from "react-native";
 import { BadgeCelebration } from "@/components/ui/BadgeCelebration";
 import { flushPendingStorage } from "@/store/gameStore";
+import { ensureWhisperReady } from "@/hooks/useWhisper";
 import {
   Fredoka_400Regular,
 } from "@expo-google-fonts/fredoka";
@@ -58,6 +59,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Pre-warm the on-device speech engine (Whisper + Silero VAD) at app launch
+  // so the model is extracted from the APK and ready BEFORE the user reaches a
+  // chapter. Without this, a user can land on a Yes/No question while init is
+  // still racing and end up with an empty transcript scoring 0.
+  useEffect(() => {
+    void ensureWhisperReady();
+  }, []);
 
   // Flush any pending debounced storage write when app goes to background,
   // preventing data loss if the user force-quits before the 3s timer fires.

@@ -73,17 +73,18 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Download Whisper model
+      - name: Verify models from LFS
         run: |
-          mkdir -p assets/models
-          MODEL_PATH="assets/models/ggml-base.en-q5_1.bin"
-          MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin"
-          echo "Downloading Whisper base.en q5_1 model..."
-          curl -L --fail --retry 3 --retry-delay 5 -o "$MODEL_PATH" "$MODEL_URL"
-          SIZE=$(stat --printf="%s" "$MODEL_PATH")
-          echo "Downloaded $((SIZE / 1048576))MB to $MODEL_PATH"
-          if [ "$SIZE" -lt 40000000 ]; then
-            echo "::error::Model file is suspiciously small ($SIZE bytes) — aborting."
+          WHISPER_SIZE=$(stat --printf="%s" "assets/models/ggml-base.en-q5_1.bin")
+          echo "Whisper: $((WHISPER_SIZE / 1048576))MB"
+          if [ "$WHISPER_SIZE" -lt 40000000 ]; then
+            echo "::error::Whisper model is an LFS pointer or missing ($WHISPER_SIZE bytes). Ensure git lfs pull ran correctly."
+            exit 1
+          fi
+          VAD_SIZE=$(stat --printf="%s" "assets/models/ggml-silero-v6.2.0.bin")
+          echo "VAD: $((VAD_SIZE / 1024))KB"
+          if [ "$VAD_SIZE" -lt 500000 ]; then
+            echo "::error::VAD model is an LFS pointer or missing ($VAD_SIZE bytes)."
             exit 1
           fi
 
@@ -134,6 +135,43 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew ${{ steps.gradle.outputs.command }} --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+      - name: Verify models are bundled inside the APK
+        run: |
+          APK_PATH="${{ steps.gradle.outputs.apk_path }}"
+          echo "Inspecting $APK_PATH for bundled models..."
+
+          WHISPER_ENTRY=$(unzip -l "$APK_PATH" | grep -i "ggml-base.en-q5_1" | awk '{print $4}' | head -n1)
+          if [ -z "$WHISPER_ENTRY" ]; then
+            echo "::error::Whisper model is NOT inside the APK — Metro/expo-prebuild bundling broke."
+            unzip -l "$APK_PATH" | grep -i ggml || true
+            exit 1
+          fi
+          WHISPER_BYTES=$(unzip -p "$APK_PATH" "$WHISPER_ENTRY" | wc -c)
+          echo "  whisper: $WHISPER_ENTRY ($((WHISPER_BYTES / 1048576))MB)"
+          if [ "$WHISPER_BYTES" -lt 40000000 ]; then
+            echo "::error::Whisper entry inside APK is too small ($WHISPER_BYTES bytes)."
+            exit 1
+          fi
+
+          VAD_ENTRY=$(unzip -l "$APK_PATH" | grep -i "ggml-silero" | awk '{print $4}' | head -n1)
+          if [ -z "$VAD_ENTRY" ]; then
+            echo "::error::Silero VAD model is NOT inside the APK."
+            unzip -l "$APK_PATH" | grep -i silero || true
+            exit 1
+          fi
+          VAD_BYTES=$(unzip -p "$APK_PATH" "$VAD_ENTRY" | wc -c)
+          echo "  vad: $VAD_ENTRY ($((VAD_BYTES / 1024))KB)"
+          if [ "$VAD_BYTES" -lt 500000 ]; then
+            echo "::error::VAD entry inside APK is too small ($VAD_BYTES bytes)."
+            exit 1
+          fi
+
+          # Sanity-check that whisper.rn native libs landed in the APK for arm64-v8a
+          if ! unzip -l "$APK_PATH" | grep -q "lib/arm64-v8a/.*whisper"; then
+            echo "::warning::No libwhisper*.so found under lib/arm64-v8a/ — verify whisper.rn native bundling."
+            unzip -l "$APK_PATH" | grep "lib/arm64-v8a/" | head -20 || true
+          fi
 
       - name: Extract git metadata
         id: meta

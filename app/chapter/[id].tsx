@@ -18,7 +18,7 @@ import { useAudioRecorder, cleanupAudioFile } from "@/hooks/useAudioRecorder";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
 import { useAudio } from "@/hooks/useAudio";
 import { loadDictionary } from "@/lib/cmuDictionary";
-import { assessAnswer, assessAnswerFallback, buildSimpleResult } from "@/lib/assessmentEngine";
+import { assessAnswer, buildSimpleResult } from "@/lib/assessmentEngine";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { useWhisper } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
@@ -139,9 +139,9 @@ export default function ChapterPage() {
     // Android m4a @64kbps ≈ 8KB/s; iOS WAV @16kHz ≈ 32KB/s.
     // Under 8KB means a failed or sub-0.5s recording — skip Whisper.
     try {
-      const info = await FileSystem.getInfoAsync(audioUri, { size: true });
-      if (info.exists && (info as { size?: number }).size != null && (info as { size: number }).size < 8_000) {
-        console.warn(`${TAG} audio file too small (${(info as { size: number }).size} bytes) — showing no-speech error`);
+      const info = await FileSystem.getInfoAsync(audioUri);
+      if (info.exists && "size" in info && typeof info.size === "number" && info.size < 8_000) {
+        console.warn(`${TAG} audio file too small (${info.size} bytes) — showing no-speech error`);
         setNoSpeechError(true);
         cleanupAudioFile(audioUri);
         return;
@@ -166,19 +166,42 @@ export default function ChapterPage() {
         ),
       ]);
 
+    // Whisper MUST be ready to evaluate any answer. Without a working speech-
+    // recognition context every comparison runs against an empty transcript and
+    // marks the user wrong even when they answered correctly. Surface a
+    // no-speech-style error and don't burn an attempt.
+    if (!whisper.isReady) {
+      console.warn(`${TAG} whisper not ready (error=${whisper.error ?? "loading"}) — aborting assess`);
+      setIsAnalyzing(false);
+      setAnalyzePhase(null);
+      setNoSpeechError(true);
+      cleanupAudioFile(audioUri);
+      return;
+    }
+
     let result: AssessmentResult;
 
     try {
       // ── identify: simple YES/NO check, no phoneme assessment ──
       if (currentQ.type === "identify") {
-        incrementAttemptCount(chapterId, currentQ.id);
-        let transcript = "";
-        if (whisper.isReady) {
-          setAnalyzePhase("transcribing");
-          const wr = await transcribeWithTimeout(audioUri);
-          transcript = wr?.text ?? "";
-        }
+        setAnalyzePhase("transcribing");
+        const wr = await transcribeWithTimeout(audioUri);
+        const transcript = wr?.text ?? "";
         console.log(`${TAG} identify transcript="${transcript}" expected="${expected}"`);
+
+        // Empty transcript — Whisper couldn't hear it. Don't burn an attempt
+        // and don't pretend the user answered wrong. Show the no-speech UI.
+        if (!transcript.trim()) {
+          console.warn(`${TAG} identify Whisper returned empty — showing no-speech error`);
+          setIsAnalyzing(false);
+          setAnalyzePhase(null);
+          setNoSpeechError(true);
+          cleanupAudioFile(audioUri);
+          return;
+        }
+
+        // We have content — increment attempt and score.
+        incrementAttemptCount(chapterId, currentQ.id);
         const spoken = transcript.toLowerCase().trim();
         const exp = expected.toLowerCase().trim();
         const passed =
@@ -189,7 +212,7 @@ export default function ChapterPage() {
         console.log(`${TAG} identify result — passed=${passed}`);
       }
       // ── all other types: full phoneme assessment ──
-      else if (whisper.isReady) {
+      else {
         console.log(`${TAG} using Whisper for assessment`);
         setAnalyzePhase("transcribing");
         const whisperResult = await transcribeWithTimeout(audioUri);
@@ -197,6 +220,8 @@ export default function ChapterPage() {
         // Empty transcript — Whisper couldn't hear speech. Don't count as attempt.
         if (!whisperResult || !whisperResult.text.trim()) {
           console.warn(`${TAG} Whisper returned empty — showing no-speech error`);
+          setIsAnalyzing(false);
+          setAnalyzePhase(null);
           setNoSpeechError(true);
           cleanupAudioFile(audioUri);
           return;
@@ -213,17 +238,15 @@ export default function ChapterPage() {
           newAttemptCount - 1
         );
         console.log(`${TAG} Whisper assessment — passed=${result.passed} score=${result.overallScore}`);
-      } else {
-        // No Whisper available — use fallback (still counts as attempt)
-        setAnalyzePhase("scoring");
-        const newAttemptCount = incrementAttemptCount(chapterId, currentQ.id);
-        console.warn(`${TAG} Whisper not ready — using fallback path`);
-        result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, newAttemptCount - 1);
       }
     } catch (e) {
       console.error(`${TAG} assessment threw:`, e);
-      const newAttemptCount = incrementAttemptCount(chapterId, currentQ.id);
-      result = assessAnswerFallback("", 0, expected, currentQ.acceptableAnswers, currentQ.type, newAttemptCount - 1);
+      // Don't burn an attempt on a technical failure — show no-speech UI.
+      setIsAnalyzing(false);
+      setAnalyzePhase(null);
+      setNoSpeechError(true);
+      cleanupAudioFile(audioUri);
+      return;
     } finally {
       setIsAnalyzing(false);
       setAnalyzePhase(null);
@@ -439,17 +462,15 @@ export default function ChapterPage() {
                 animate={{ opacity: 1 }}
                 style={styles.whisperBanner}
               >
-                <Text style={styles.whisperBannerText}>
-                  {whisper.downloadProgress > 0
-                    ? `Setting up speech engine… ${Math.round(whisper.downloadProgress * 100)}%`
-                    : "Setting up speech engine…"}
-                </Text>
+                <Text style={styles.whisperBannerText}>Setting up speech engine…</Text>
               </MotiView>
             )}
-            {!whisper.isReady && !whisper.isLoading && (
-              <View style={styles.whisperBanner}>
-                <Text style={styles.whisperBannerText}>Basic speech mode — tap mic and speak</Text>
-              </View>
+            {!whisper.isReady && !whisper.isLoading && whisper.error && (
+              <Pressable onPress={whisper.retry} style={styles.whisperBanner}>
+                <Text style={styles.whisperBannerText}>
+                  Speech engine failed to load. Tap to retry.
+                </Text>
+              </Pressable>
             )}
 
             {/* No-speech error */}
