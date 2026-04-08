@@ -84,7 +84,7 @@ export interface WhisperState {
   /** @deprecated retained for API compatibility — always 0 (no network download). */
   downloadProgress: number;
   error: string | null;
-  transcribe: (audioUri: string) => Promise<WhisperResult | null>;
+  transcribe: (audioUri: string, opts?: TranscribeOptions) => Promise<WhisperResult | null>;
   isTranscribing: boolean;
   retry: () => void;
 }
@@ -174,6 +174,25 @@ async function recordDiagnostic(stage: string, err: unknown) {
     await AsyncStorage.setItem(DIAG_KEY, JSON.stringify(payload));
   } catch {
     /* diagnostics are best-effort */
+  }
+}
+
+const TRANSCRIBE_DIAG_KEY = "whisper:lastTranscribe";
+
+interface TranscribeDiagnostic {
+  outcome: "ok" | "empty-result" | "special-token" | "hallucination";
+  text: string;
+  offsetMs: number;
+}
+
+async function recordLastTranscribe(diag: TranscribeDiagnostic) {
+  try {
+    await AsyncStorage.setItem(
+      TRANSCRIBE_DIAG_KEY,
+      JSON.stringify({ ...diag, ts: new Date().toISOString() })
+    );
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -269,7 +288,17 @@ async function getSpeechOffsetMs(
   }
 }
 
-async function transcribeImpl(audioUri: string): Promise<WhisperResult | null> {
+export interface TranscribeOptions {
+  /** Optional prompt to bias Whisper toward expected words (e.g. "yes no" for identify questions). */
+  prompt?: string;
+  /** Permissive mode — looser thresholds, useful for short single-syllable utterances. */
+  permissive?: boolean;
+}
+
+async function transcribeImpl(
+  audioUri: string,
+  userOpts: TranscribeOptions = {}
+): Promise<WhisperResult | null> {
   const ctx = singleton.whisperCtx;
   if (!ctx) {
     console.warn(`${TAG} transcribe called but context not ready`);
@@ -277,7 +306,7 @@ async function transcribeImpl(audioUri: string): Promise<WhisperResult | null> {
   }
 
   const uri = audioUri.startsWith("file://") ? audioUri : `file://${audioUri}`;
-  console.log(`${TAG} transcribe started uri=${uri}`);
+  console.log(`${TAG} transcribe started uri=${uri} permissive=${!!userOpts.permissive}`);
 
   // VAD is a SOFT signal — we always run Whisper. VAD only contributes a
   // leading-silence offset when it's confident.
@@ -291,19 +320,21 @@ async function transcribeImpl(audioUri: string): Promise<WhisperResult | null> {
       temperature: 0,
       temperatureInc: 0,
       beamSize: 5,
-      // Slightly looser than 0.4 — single-syllable answers like "no" were
-      // being classified as silence on quieter mics.
-      noSpeechThold: 0.3,
-      logprobThold: -0.7,
+      // Permissive mode for short identify answers — looser thresholds so
+      // single-syllable words like "no" / "yes" aren't classified as silence.
+      noSpeechThold: userOpts.permissive ? 0.1 : 0.3,
+      logprobThold: userOpts.permissive ? -1.0 : -0.7,
       suppressNonSpeechTokens: true,
     };
     if (offsetMs > 0) opts.offset = offsetMs;
+    if (userOpts.prompt) opts.prompt = userOpts.prompt;
 
     const { promise } = ctx.transcribe(uri, opts);
     const result = await promise;
 
     if (!result?.result) {
       console.warn(`${TAG} transcribe returned empty result`);
+      void recordLastTranscribe({ outcome: "empty-result", text: "", offsetMs });
       return null;
     }
 
@@ -312,14 +343,18 @@ async function transcribeImpl(audioUri: string): Promise<WhisperResult | null> {
 
     if (/^\[[\w\s]+\]$/.test(text)) {
       console.warn(`${TAG} detected whisper special token: "${text}"`);
+      void recordLastTranscribe({ outcome: "special-token", text, offsetMs });
       return null;
     }
 
     const cleaned = text.toLowerCase().replace(/[^a-z\s']/g, "").trim();
     if (HALLUCINATIONS.has(cleaned)) {
       console.warn(`${TAG} detected hallucination: "${text}"`);
+      void recordLastTranscribe({ outcome: "hallucination", text, offsetMs });
       return null;
     }
+
+    void recordLastTranscribe({ outcome: "ok", text, offsetMs });
 
     const segments: WhisperSegment[] = [];
     if (result.segments) {
@@ -378,14 +413,17 @@ export function useWhisper(): WhisperState {
     };
   }, []);
 
-  const transcribe = useCallback(async (audioUri: string): Promise<WhisperResult | null> => {
-    setIsTranscribing(true);
-    try {
-      return await transcribeImpl(audioUri);
-    } finally {
-      setIsTranscribing(false);
-    }
-  }, []);
+  const transcribe = useCallback(
+    async (audioUri: string, opts?: TranscribeOptions): Promise<WhisperResult | null> => {
+      setIsTranscribing(true);
+      try {
+        return await transcribeImpl(audioUri, opts);
+      } finally {
+        setIsTranscribing(false);
+      }
+    },
+    []
+  );
 
   const retry = useCallback(() => retryWhisperInit(), []);
 

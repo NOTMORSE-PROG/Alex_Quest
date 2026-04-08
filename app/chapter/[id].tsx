@@ -158,9 +158,9 @@ export default function ChapterPage() {
         : currentQ.expectedAnswer;
 
     // Whisper transcription with 15-second timeout to prevent hangs on slow devices
-    const transcribeWithTimeout = (uri: string) =>
+    const transcribeWithTimeout = (uri: string, opts?: { prompt?: string; permissive?: boolean }) =>
       Promise.race([
-        whisper.transcribe(uri),
+        whisper.transcribe(uri, opts),
         new Promise<null>((_, reject) =>
           setTimeout(() => reject(new Error("Transcription timed out")), 15_000)
         ),
@@ -185,7 +185,12 @@ export default function ChapterPage() {
       // ── identify: simple YES/NO check, no phoneme assessment ──
       if (currentQ.type === "identify") {
         setAnalyzePhase("transcribing");
-        const wr = await transcribeWithTimeout(audioUri);
+        // Permissive mode + "yes no" prompt — single-syllable answers need
+        // looser thresholds and a hint to avoid being classified as silence.
+        const wr = await transcribeWithTimeout(audioUri, {
+          prompt: "yes no",
+          permissive: true,
+        });
         const transcript = wr?.text ?? "";
         console.log(`${TAG} identify transcript="${transcript}" expected="${expected}"`);
 
