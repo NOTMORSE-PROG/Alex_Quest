@@ -179,18 +179,26 @@ async function recordDiagnostic(stage: string, err: unknown) {
 
 const TRANSCRIBE_DIAG_KEY = "whisper:lastTranscribe";
 
-interface TranscribeDiagnostic {
+export interface TranscribeDiagnostic {
   outcome: "ok" | "empty-result" | "special-token" | "hallucination";
   text: string;
   offsetMs: number;
+  ts: string;
 }
 
-async function recordLastTranscribe(diag: TranscribeDiagnostic) {
+// Module-level last-transcribe diagnostic — surfaced via getLastTranscribe()
+// so screens (e.g. chapter no-speech banner) can display it without reading AsyncStorage.
+let lastTranscribe: TranscribeDiagnostic | null = null;
+
+export function getLastTranscribe(): TranscribeDiagnostic | null {
+  return lastTranscribe;
+}
+
+async function recordLastTranscribe(diag: Omit<TranscribeDiagnostic, "ts">) {
+  const full: TranscribeDiagnostic = { ...diag, ts: new Date().toISOString() };
+  lastTranscribe = full;
   try {
-    await AsyncStorage.setItem(
-      TRANSCRIBE_DIAG_KEY,
-      JSON.stringify({ ...diag, ts: new Date().toISOString() })
-    );
+    await AsyncStorage.setItem(TRANSCRIBE_DIAG_KEY, JSON.stringify(full));
   } catch {
     /* best-effort */
   }

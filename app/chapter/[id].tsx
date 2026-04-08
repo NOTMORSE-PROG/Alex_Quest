@@ -20,7 +20,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { loadDictionary } from "@/lib/cmuDictionary";
 import { assessAnswer, buildSimpleResult } from "@/lib/assessmentEngine";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
-import { useWhisper } from "@/hooks/useWhisper";
+import { useWhisper, getLastTranscribe } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
 import { RECORDING_TIMEOUT_MS } from "@/lib/config";
 import type { AssessmentResult } from "@/types/assessment";
@@ -488,6 +488,19 @@ export default function ChapterPage() {
                 <Text style={styles.noSpeechText}>
                   We couldn't hear you — please speak louder and try again!
                 </Text>
+                {/* Debug: last Whisper output — screenshot this if recognition keeps failing */}
+                {(() => {
+                  const diag = getLastTranscribe();
+                  return diag ? (
+                    <Text style={styles.noSpeechDebug}>
+                      debug: {diag.outcome}
+                      {diag.text ? ` "${diag.text}"` : ""}
+                      {diag.offsetMs ? ` vad=${diag.offsetMs}ms` : ""}
+                    </Text>
+                  ) : (
+                    <Text style={styles.noSpeechDebug}>debug: no transcribe yet</Text>
+                  );
+                })()}
               </MotiView>
             )}
 
@@ -550,5 +563,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#FFD966",
     textAlign: "center",
+  },
+  noSpeechDebug: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 11,
+    color: "rgba(255,217,102,0.6)",
+    textAlign: "center",
+    marginTop: 6,
   },
 });
