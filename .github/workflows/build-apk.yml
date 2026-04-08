@@ -42,17 +42,33 @@ jobs:
           files=(assets/videos/*.mp4)
           if [ ${#files[@]} -eq 0 ]; then
             echo "No video files found — skipping LFS verification."
-            exit 0
+          else
+            for f in "${files[@]}"; do
+              FILE_SIZE=$(stat --printf="%s" "$f")
+              if [ "$FILE_SIZE" -lt 1000000 ]; then
+                echo "::error::LFS file $f is a pointer ($FILE_SIZE bytes), not the actual video."
+                exit 1
+              fi
+              echo "  $(basename "$f"): $((FILE_SIZE / 1048576))MB"
+            done
+            echo "All LFS video files verified."
           fi
-          for f in "${files[@]}"; do
-            FILE_SIZE=$(stat --printf="%s" "$f")
-            if [ "$FILE_SIZE" -lt 1000000 ]; then
-              echo "::error::LFS file $f is a pointer ($FILE_SIZE bytes), not the actual video."
-              exit 1
-            fi
-            echo "  $(basename "$f"): $((FILE_SIZE / 1048576))MB"
-          done
-          echo "All LFS video files verified."
+
+          echo "Checking LFS model files..."
+          WHISPER_SIZE=$(stat --printf="%s" "assets/models/ggml-base.en-q5_1.bin" 2>/dev/null || echo 0)
+          if [ "$WHISPER_SIZE" -lt 40000000 ]; then
+            echo "::error::Whisper model is an LFS pointer or missing ($WHISPER_SIZE bytes)."
+            exit 1
+          fi
+          echo "  ggml-base.en-q5_1.bin: $((WHISPER_SIZE / 1048576))MB"
+
+          VAD_SIZE=$(stat --printf="%s" "assets/models/ggml-silero-v6.2.0.bin" 2>/dev/null || echo 0)
+          if [ "$VAD_SIZE" -lt 500000 ]; then
+            echo "::error::VAD model is an LFS pointer or missing ($VAD_SIZE bytes)."
+            exit 1
+          fi
+          echo "  ggml-silero-v6.2.0.bin: $((VAD_SIZE / 1024))KB"
+          echo "All LFS model files verified."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -73,23 +89,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Verify models from LFS
-        run: |
-          WHISPER_SIZE=$(stat --printf="%s" "assets/models/ggml-base.en-q5_1.bin")
-          echo "Whisper: $((WHISPER_SIZE / 1048576))MB"
-          if [ "$WHISPER_SIZE" -lt 40000000 ]; then
-            echo "::error::Whisper model is an LFS pointer or missing ($WHISPER_SIZE bytes). Ensure git lfs pull ran correctly."
-            exit 1
-          fi
-          VAD_SIZE=$(stat --printf="%s" "assets/models/ggml-silero-v6.2.0.bin")
-          echo "VAD: $((VAD_SIZE / 1024))KB"
-          if [ "$VAD_SIZE" -lt 500000 ]; then
-            echo "::error::VAD model is an LFS pointer or missing ($VAD_SIZE bytes)."
-            exit 1
-          fi
-
       - name: Generate native project
         run: npx expo prebuild --clean --platform android
+
+      - name: Copy models into Android assets
+        run: |
+          mkdir -p android/app/src/main/assets/models
+          cp assets/models/ggml-base.en-q5_1.bin android/app/src/main/assets/models/
+          cp assets/models/ggml-silero-v6.2.0.bin android/app/src/main/assets/models/
+          echo "Copied models:"
+          ls -lh android/app/src/main/assets/models/
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -136,15 +145,25 @@ jobs:
           chmod +x gradlew
           ./gradlew ${{ steps.gradle.outputs.command }} --no-daemon -PreactNativeArchitectures=arm64-v8a
 
+      - name: Debug — APK asset contents
+        if: always()
+        run: |
+          APK_PATH="${{ steps.gradle.outputs.apk_path }}"
+          echo "All .bin entries in APK:"
+          unzip -l "$APK_PATH" | grep -i "\.bin" || echo "(none)"
+          echo "assets/ entries (first 30):"
+          unzip -l "$APK_PATH" | grep "assets/" | head -30 || echo "(none)"
+
       - name: Verify models are bundled inside the APK
         run: |
           APK_PATH="${{ steps.gradle.outputs.apk_path }}"
           echo "Inspecting $APK_PATH for bundled models..."
 
-          WHISPER_ENTRY=$(unzip -l "$APK_PATH" | grep -i "ggml-base.en-q5_1" | awk '{print $4}' | head -n1)
+          WHISPER_ENTRY=$(unzip -l "$APK_PATH" | grep -E "models/ggml-base" | awk '{print $4}' | head -n1)
           if [ -z "$WHISPER_ENTRY" ]; then
-            echo "::error::Whisper model is NOT inside the APK — Metro/expo-prebuild bundling broke."
-            unzip -l "$APK_PATH" | grep -i ggml || true
+            echo "::error::Whisper model is NOT inside the APK."
+            echo "All .bin files found in APK:"
+            unzip -l "$APK_PATH" | grep -i "\.bin" || echo "(none)"
             exit 1
           fi
           WHISPER_BYTES=$(unzip -p "$APK_PATH" "$WHISPER_ENTRY" | wc -c)
@@ -154,10 +173,9 @@ jobs:
             exit 1
           fi
 
-          VAD_ENTRY=$(unzip -l "$APK_PATH" | grep -i "ggml-silero" | awk '{print $4}' | head -n1)
+          VAD_ENTRY=$(unzip -l "$APK_PATH" | grep -E "models/ggml-silero" | awk '{print $4}' | head -n1)
           if [ -z "$VAD_ENTRY" ]; then
             echo "::error::Silero VAD model is NOT inside the APK."
-            unzip -l "$APK_PATH" | grep -i silero || true
             exit 1
           fi
           VAD_BYTES=$(unzip -p "$APK_PATH" "$VAD_ENTRY" | wc -c)

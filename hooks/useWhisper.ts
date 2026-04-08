@@ -122,19 +122,42 @@ function setSingleton(next: Partial<SingletonState>) {
   notify();
 }
 
-/** Copy a bundled `.bin` asset to a stable on-disk path on first run. Idempotent. */
+/**
+ * Copy a bundled model to a stable on-disk path. Idempotent (skips if already copied).
+ *
+ * Two strategies are tried in order:
+ *  1. Metro asset registry via Asset.fromModule() — works in dev and when Metro
+ *     correctly bundles the .bin file as a registered asset.
+ *  2. Direct Android asset URI (file:///android_asset/models/<filename>) — works
+ *     when the CI "Copy models into Android assets" step placed the file at
+ *     android/app/src/main/assets/models/ before the Gradle build.
+ */
 async function ensureAssetCopied(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assetModule: any,
+  filename: string,
   destPath: string
 ): Promise<string> {
   const info = await FileSystem.getInfoAsync(destPath);
   if (info.exists) return destPath;
 
-  const asset = Asset.fromModule(assetModule);
-  await asset.downloadAsync();
-  if (!asset.localUri) throw new Error("Asset localUri unavailable after downloadAsync");
-  await FileSystem.copyAsync({ from: asset.localUri, to: destPath });
+  // Strategy 1: Metro-registered asset
+  try {
+    const asset = Asset.fromModule(assetModule);
+    await asset.downloadAsync();
+    if (asset.localUri) {
+      await FileSystem.copyAsync({ from: asset.localUri, to: destPath });
+      console.log(`${TAG} copied ${filename} via Asset.fromModule`);
+      return destPath;
+    }
+  } catch (e) {
+    console.warn(`${TAG} Asset.fromModule failed for ${filename}:`, e);
+  }
+
+  // Strategy 2: Direct Android asset path (CI copies models here before Gradle build)
+  const androidUri = `file:///android_asset/models/${filename}`;
+  console.log(`${TAG} falling back to android asset URI for ${filename}`);
+  await FileSystem.copyAsync({ from: androidUri, to: destPath });
   return destPath;
 }
 
@@ -179,8 +202,8 @@ export function ensureWhisperReady(): Promise<void> {
       stage = "extract-assets";
       console.log(`${TAG} extracting bundled models…`);
       const [whisperPath, vadPath] = await Promise.all([
-        ensureAssetCopied(WHISPER_ASSET, WHISPER_DEST),
-        ensureAssetCopied(VAD_ASSET, VAD_DEST).catch((e) => {
+        ensureAssetCopied(WHISPER_ASSET, "ggml-base.en-q5_1.bin", WHISPER_DEST),
+        ensureAssetCopied(VAD_ASSET, "ggml-silero-v6.2.0.bin", VAD_DEST).catch((e) => {
           // VAD is optional — log and continue without it.
           console.warn(`${TAG} VAD asset extract failed:`, e);
           return null;
