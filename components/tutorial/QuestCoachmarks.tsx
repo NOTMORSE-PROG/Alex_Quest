@@ -37,14 +37,16 @@ const STEPS = [
 
 export function QuestCoachmarks({ visible, onDone }: Props) {
   const [step, setStep] = useState(0);
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  // Clamp step in case state is preserved across hot-reloads or STEPS length changes
+  const safeStep = Math.min(step, STEPS.length - 1);
+  const current = STEPS[safeStep];
+  const isLast = safeStep === STEPS.length - 1;
 
   const handleNext = () => {
     if (isLast) {
       onDone();
     } else {
-      setStep((s) => s + 1);
+      setStep(safeStep + 1);
     }
   };
 
@@ -52,7 +54,7 @@ export function QuestCoachmarks({ visible, onDone }: Props) {
     <Modal transparent animationType="fade" visible={visible} statusBarTranslucent>
       <View style={styles.overlay}>
         <MotiView
-          key={step}
+          key={safeStep}
           from={{ opacity: 0, scale: 0.92, translateY: 16 }}
           animate={{ opacity: 1, scale: 1, translateY: 0 }}
           transition={{ type: "spring", stiffness: 220, damping: 20 }}
@@ -67,7 +69,7 @@ export function QuestCoachmarks({ visible, onDone }: Props) {
             {STEPS.map((_, i) => (
               <View
                 key={i}
-                style={[styles.dot, i === step && styles.dotActive]}
+                style={[styles.dot, i === safeStep && styles.dotActive]}
               />
             ))}
           </View>

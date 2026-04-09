@@ -400,6 +400,15 @@ async function transcribeImpl(
     return { text, segments };
   } catch (e) {
     console.error(`${TAG} transcribe threw:`, e);
+    // If the native context was freed (activity recreated, JS reload, OOM),
+    // reset the singleton so the next attempt triggers fresh initialization.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/context not found/i.test(msg)) {
+      console.warn(`${TAG} native Whisper context invalidated — resetting for re-init`);
+      setSingleton({ status: "idle", whisperCtx: null, vadCtx: null, errorMessage: null });
+      inFlight = null;
+      void ensureWhisperReady();
+    }
     return null;
   }
 }
