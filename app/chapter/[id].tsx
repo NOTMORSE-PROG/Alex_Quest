@@ -253,6 +253,7 @@ export default function ChapterPage() {
 
     // ── Guard: no audio captured ──
     if (!audioUri) {
+      setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: null, whisperOutcome: "no-audio-uri", whisperText: null });
       setNoSpeechError(true);
       return;
     }
@@ -385,6 +386,9 @@ export default function ChapterPage() {
       }
     } catch (e) {
       console.error(`${TAG} assessment threw:`, e);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      const diag3 = getLastTranscribe();
+      setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: `error: ${errMsg.slice(0, 80)}`, whisperText: diag3?.text ?? null });
       // Don't burn an attempt on a technical failure — show no-speech UI.
       setIsAnalyzing(false);
       setAnalyzePhase(null);
