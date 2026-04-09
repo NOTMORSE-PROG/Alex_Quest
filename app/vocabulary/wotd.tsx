@@ -68,14 +68,21 @@ export default function WordOfTheDayPage() {
     if (phase === "idle") {
       setNoSpeech(false);
       try {
+        // Set audio session before recording. shouldDuckAndroid: false avoids
+        // Oppo/Vivo OEM frameworks suppressing mic input during recording.
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
+          shouldDuckAndroid: false,
+          playThroughEarpieceAndroid: false,
         });
+        // 200ms timing gap — expo-av issue #21782: some OEM devices need the
+        // audio session to fully activate before MediaRecorder can attach.
+        await new Promise(r => setTimeout(r, 200));
         await recorder.startRecording();
         setPhase("recording");
       } catch {
-        // permission denied — stay idle
+        // permission denied or recorder unavailable — stay idle
       }
     } else if (phase === "recording") {
       const uri = await recorder.stopRecording();
@@ -84,7 +91,26 @@ export default function WordOfTheDayPage() {
         return;
       }
       setPhase("assessing");
-      const whisperResult = await whisper.transcribe(uri);
+
+      // Guard: Whisper must be ready before attempting transcription
+      if (!whisper.isReady) {
+        console.warn("[wotd] whisper not ready — aborting");
+        setNoSpeech(true);
+        setPhase("idle");
+        return;
+      }
+
+      // 15-second timeout to prevent hangs on slow devices
+      const whisperResult = await Promise.race([
+        whisper.transcribe(uri),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("wotd transcription timed out")), 15_000)
+        ),
+      ]).catch((err: unknown) => {
+        console.warn("[wotd] transcription error:", err);
+        return null;
+      });
+
       if (!whisperResult) {
         setNoSpeech(true);
         setPhase("idle");

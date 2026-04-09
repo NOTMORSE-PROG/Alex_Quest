@@ -5,7 +5,7 @@ import LottieView from "lottie-react-native";
 import { ThoughtBubble } from "./ThoughtBubble";
 import type { AlexMood } from "@/hooks/useAlexAnimation";
 
-export type AlexVariant = "home" | "chapter" | "falling" | "celebrating" | "small";
+export type AlexVariant = "home" | "chapter" | "falling" | "celebrating" | "small" | "mother" | "father";
 
 interface Props {
   mood?: AlexMood;
@@ -21,6 +21,8 @@ const VARIANT_SIZE: Record<AlexVariant, number> = {
   falling: 160,
   celebrating: 200,
   small: 72,
+  mother: 175,
+  father: 200,
 };
 
 const MOOD_ANIMATE: Record<AlexMood, object> = {

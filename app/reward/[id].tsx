@@ -162,12 +162,19 @@ export default function RewardPage() {
         transition={{ delay: 1400, type: "spring" }}
         style={[styles.buttons, { paddingBottom: insets.bottom + 24 }]}
       >
-        {hasNext && (
+        {hasNext ? (
           <Pressable
             onPress={() => { playSFX("click"); router.replace(`/journey/${chapterId}`); }}
             style={styles.nextBtn}
           >
             <Text style={styles.nextBtnText}>Continue to Stage {chapterId + 1}  ▶</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => { playSFX("click"); router.replace("/reunion"); }}
+            style={styles.nextBtn}
+          >
+            <Text style={styles.nextBtnText}>Watch the Reunion 🦜</Text>
           </Pressable>
         )}
         <Pressable

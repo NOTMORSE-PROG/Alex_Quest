@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +30,28 @@ import { RECORDING_TIMEOUT_MS } from "@/lib/config";
 import type { AssessmentResult } from "@/types/assessment";
 
 const TAG = "[ChapterPage]";
+
+/**
+ * Returns a device-specific settings path hint for the no-speech error banner.
+ * Uses the Android device model string to infer the manufacturer.
+ */
+function getOEMPermissionHint(): string {
+  if (Platform.OS !== "android") return "";
+  const model = ((Platform.constants as { Model?: string }).Model ?? "").toLowerCase();
+  if (model.includes("oppo") || model.includes("reno") || model.includes("realme")) {
+    return "On Oppo/realme: Settings \u2192 Privacy \u2192 Permission manager \u2192 Microphone";
+  }
+  if (model.includes("xiaomi") || model.includes("redmi") || model.includes("poco")) {
+    return "On Xiaomi: Security app \u2192 Permissions \u2192 Microphone";
+  }
+  if (model.includes("vivo")) {
+    return "On Vivo: Settings \u2192 Privacy \u2192 Permissions \u2192 Microphone";
+  }
+  if (model.startsWith("sm-") || model.includes("samsung") || model.includes("galaxy")) {
+    return "On Samsung: Settings \u2192 Apps \u2192 Alex\u2019s Quest \u2192 Permissions";
+  }
+  return "Settings \u2192 Apps \u2192 Alex\u2019s Quest \u2192 Permissions";
+}
 
 export default function ChapterPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -138,6 +160,33 @@ export default function ChapterPage() {
 
     async function setup() {
       console.log(`${TAG} setup — requesting mic permission`);
+
+      // Check current permission state first (Android 11+ can auto-revoke
+      // or permanently deny without showing a dialog on subsequent requests).
+      const [existingSpeech, existingAv] = await Promise.all([
+        ExpoSpeechRecognitionModule.getPermissionsAsync(),
+        Audio.getPermissionsAsync(),
+      ]);
+
+      const permanentlyDenied =
+        (existingSpeech.status === "denied" && !existingSpeech.canAskAgain) ||
+        (existingAv.status === "denied" && !existingAv.canAskAgain);
+
+      if (permanentlyDenied) {
+        // Permission was permanently denied or auto-revoked (Android 12+).
+        // requestPermissionsAsync() won't show a dialog, so guide the user
+        // to system Settings instead.
+        Alert.alert(
+          "Microphone Required",
+          "Microphone access was turned off. Please enable it in Settings \u2192 Apps \u2192 Alex\u2019s Quest \u2192 Permissions.",
+          [
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+            { text: "Go Back", onPress: () => router.back() },
+          ]
+        );
+        return;
+      }
+
       // Request BOTH expo-speech-recognition and expo-av mic permissions.
       // On stricter Android ROMs (Oppo ColorOS, MIUI, FunTouch) a grant to one
       // native module does not always propagate to the other, so the recorder
@@ -205,7 +254,10 @@ export default function ChapterPage() {
     try {
       const info = await FileSystem.getInfoAsync(audioUri);
       if (info.exists && "size" in info && typeof info.size === "number" && info.size < 8_000) {
-        console.warn(`${TAG} audio file too small (${info.size} bytes) — showing no-speech error`);
+        console.warn(`${TAG} audio file too small (${info.size} bytes), profile=${recorder.profileUsed} — marking profile failed`);
+        // Mark this recording profile as broken on this device so the next
+        // attempt automatically uses the next fallback (e.g. WAV instead of M4A).
+        recorder.markProfileFailed();
         setNoSpeechError(true);
         cleanupAudioFile(audioUri);
         return;
@@ -381,7 +433,7 @@ export default function ChapterPage() {
       worry();
     }
   }, [
-    currentQ, feedback, whisper, chapterId,
+    currentQ, feedback, whisper, recorder, chapterId,
     incrementAttemptCount, saveQuestionScore, saveRecordingPath,
     playSFX, playCompliment, celebrate, worry,
   ]);
@@ -610,11 +662,44 @@ export default function ChapterPage() {
                 <Text style={styles.noSpeechText}>
                   We couldn't hear you — please speak louder and try again!
                 </Text>
-                {recorder.error ? (
+
+                {/* Android 12+ microphone privacy toggle — the system silences
+                    recording without error when the Quick Settings mic toggle is
+                    off. checkSelfPermission() still returns GRANTED. */}
+                {Platform.OS === "android" && recorder.peakDb < -50 && (
                   <Text style={styles.noSpeechDebug}>
-                    Mic blocked by your phone — check Settings → Apps → Alex&apos;s Quest → Permissions
+                    Tip: Swipe down from the top of your screen. If you see a
+                    microphone icon with a line through it, tap it to unmute
+                    your microphone.
+                  </Text>
+                )}
+
+                {/* OEM-specific permissions path */}
+                <Text style={styles.noSpeechDebug}>
+                  {recorder.error
+                    ? `Mic blocked — ${getOEMPermissionHint()}`
+                    : getOEMPermissionHint()}
+                </Text>
+
+                {/* Dev diagnostic */}
+                {__DEV__ && recorder.profileUsed ? (
+                  <Text style={styles.noSpeechDebug}>
+                    Profile: {recorder.profileUsed} | Peak: {recorder.peakDb.toFixed(0)}dB
                   </Text>
                 ) : null}
+              </MotiView>
+            )}
+
+            {/* Real-time silence warning — shown while recording if mic hears nothing */}
+            {isRecording && recorder.silenceDetected && !noSpeechError && (
+              <MotiView
+                from={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                style={styles.silenceHint}
+              >
+                <Text style={styles.silenceHintText}>
+                  Speak a bit louder!
+                </Text>
               </MotiView>
             )}
 
@@ -774,5 +859,18 @@ const styles = StyleSheet.create({
     color: "rgba(255,217,102,0.6)",
     textAlign: "center",
     marginTop: 6,
+  },
+  silenceHint: {
+    backgroundColor: "rgba(255,180,0,0.12)",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: "center",
+  },
+  silenceHintText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: "#FFD966",
+    textAlign: "center",
   },
 });
