@@ -39,6 +39,8 @@ export default function HomePage() {
 
   const handleAlexTap = () => {
     const phrase = tap();
+    if (!phrase) return; // debounced — ignore rapid taps
+    Speech.stop();
     playSFX("tap");
     Speech.speak(phrase, { language: "en-US", rate: 0.9 });
   };

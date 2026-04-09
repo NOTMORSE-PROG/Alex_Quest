@@ -17,7 +17,7 @@ const PHRASES = [
   "Say it loud and proud!",
   "Together we'll make it!",
   "The jungle is calling!",
-  "Polly wants good grammar!",
+  "You've got this, superstar!",
 ];
 
 export function useAlexAnimation() {
@@ -26,8 +26,13 @@ export function useAlexAnimation() {
   const [bubbleText, setBubbleText] = useState(PHRASES[0]);
   const phraseIndexRef = useRef(0);
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapCooldownRef = useRef<number>(0);
 
-  const tap = useCallback((): string => {
+  const tap = useCallback((): string | null => {
+    const now = Date.now();
+    if (now - tapCooldownRef.current < 1000) return null;
+    tapCooldownRef.current = now;
+
     phraseIndexRef.current = (phraseIndexRef.current + 1) % PHRASES.length;
     const phrase = PHRASES[phraseIndexRef.current];
     setBubbleText(phrase);
