@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView } from "moti";
@@ -34,6 +34,12 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
   const [storyVisible, setStoryVisible] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // When the parent starts recording it calls Speech.stop() externally —
+  // sync isSpeaking so the button goes back to 👂 instead of staying ⏹️
+  useEffect(() => {
+    if (isRecording) setIsSpeaking(false);
+  }, [isRecording]);
 
   const handleListen = async () => {
     if (isRecording) return;

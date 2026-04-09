@@ -327,9 +327,11 @@ export default function ChapterPage() {
         incrementAttemptCount(chapterId, currentQ.id);
         const spoken = transcript.toLowerCase().trim();
         const exp = expected.toLowerCase().trim();
+        // Use whole-word regex — "know" contains "no" as a substring so
+        // .includes("no") gives false positives.
         const passed =
-          (spoken.includes("yes") && exp === "yes") ||
-          (spoken.includes("no") && exp === "no") ||
+          (/\byes\b/i.test(spoken) && exp === "yes") ||
+          (/\bno\b/i.test(spoken) && exp === "no") ||
           spoken === exp;
         result = buildSimpleResult(passed, transcript, expected);
         console.log(`${TAG} identify result — passed=${passed}`);
