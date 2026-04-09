@@ -446,6 +446,13 @@ export default function ChapterPage() {
     console.log(`${TAG} handleStartRecording`);
     setRecordingUri(null);
     setNoSpeechError(false);
+
+    // Stop any active TTS before recording — on Huawei/OEM devices the TTS
+    // audio session suppresses the microphone if it's still active when
+    // MediaRecorder starts, causing silent recordings.
+    await Speech.stop();
+    await new Promise(r => setTimeout(r, 150));
+
     pauseTrack();
     await recorder.startRecording();
     setIsRecording(true);
@@ -613,6 +620,7 @@ export default function ChapterPage() {
                 ? currentQ.fullSentenceExpected
                 : currentQ.expectedAnswer
             }
+            isRecording={isRecording}
             story={chapter.story}
           />
         )}

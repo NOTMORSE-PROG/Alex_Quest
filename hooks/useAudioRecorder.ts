@@ -266,6 +266,19 @@ export function useAudioRecorder(): AudioRecorderHook {
         return;
       }
 
+      // Pre-reset: explicitly release any stale audio session before switching
+      // to recording mode. Huawei EMUI 10 and some OEMs require this two-step
+      // transition; going directly to recording mode can leave the TTS or music
+      // player's audio focus active, causing MediaRecorder to capture silence.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      await new Promise(r => setTimeout(r, 150));
+
       // Switch audio session into recording mode.
       // shouldDuckAndroid: false — ducking causes Oppo ColorOS and Vivo
       // FunTouch audio frameworks to suppress mic input on some devices.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView, AnimatePresence } from "moti";
+import * as Speech from "expo-speech";
 import { type Chapter } from "@/lib/chaptersData";
 import { colors, fonts } from "@/lib/theme";
 
@@ -13,6 +14,16 @@ interface Props {
 export function ChapterIntroScene({ chapter, onStart }: Props) {
   const insets = useSafeAreaInsets();
   const [showContinuation, setShowContinuation] = useState(false);
+
+  const handleAnimalTap = () => {
+    const next = !showContinuation;
+    setShowContinuation(next);
+    if (next) {
+      Speech.speak(chapter.story.continuation, { language: "en-US", rate: 0.85 });
+    } else {
+      Speech.stop();
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -52,7 +63,7 @@ export function ChapterIntroScene({ chapter, onStart }: Props) {
         </AnimatePresence>
 
         {/* Animal character */}
-        <Pressable onPress={() => setShowContinuation((v) => !v)}>
+        <Pressable onPress={handleAnimalTap}>
           <View>
             <Text style={styles.animalEmoji}>{chapter.animalEmoji}</Text>
           </View>

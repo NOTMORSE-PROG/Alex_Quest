@@ -8,6 +8,16 @@ const PHRASES = [
   "We're getting closer!",
   "You can do it!",
   "Almost home!",
+  "Squawk! You're amazing!",
+  "Words are like wings!",
+  "I miss my family... keep going!",
+  "One more step to home!",
+  "Practice makes perfect!",
+  "You're my favorite student!",
+  "Say it loud and proud!",
+  "Together we'll make it!",
+  "The jungle is calling!",
+  "Polly wants good grammar!",
 ];
 
 export function useAlexAnimation() {
@@ -17,10 +27,10 @@ export function useAlexAnimation() {
   const phraseIndexRef = useRef(0);
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const tap = useCallback(() => {
-    // Cycle through phrases
+  const tap = useCallback((): string => {
     phraseIndexRef.current = (phraseIndexRef.current + 1) % PHRASES.length;
-    setBubbleText(PHRASES[phraseIndexRef.current]);
+    const phrase = PHRASES[phraseIndexRef.current];
+    setBubbleText(phrase);
     setMood("happy");
     setShowBubble(true);
 
@@ -29,6 +39,8 @@ export function useAlexAnimation() {
       setShowBubble(false);
       setMood("idle");
     }, 3000);
+
+    return phrase;
   }, []);
 
   const celebrate = useCallback(() => {

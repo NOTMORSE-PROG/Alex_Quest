@@ -26,14 +26,17 @@ interface Props {
   listenText?: string;
   /** Story context shown in the info modal */
   story?: StoryContext;
+  /** Disables the listen button while the parent is actively recording */
+  isRecording?: boolean;
 }
 
-export function QuestionCard({ question, directions, hint, questionNumber, total, options, blank, targetSentence, listenText, story }: Props) {
+export function QuestionCard({ question, directions, hint, questionNumber, total, options, blank, targetSentence, listenText, story, isRecording = false }: Props) {
   const [storyVisible, setStoryVisible] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const insets = useSafeAreaInsets();
 
   const handleListen = async () => {
+    if (isRecording) return;
     if (isSpeaking) {
       await Speech.stop();
       setIsSpeaking(false);

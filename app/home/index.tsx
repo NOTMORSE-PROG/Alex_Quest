@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import * as Speech from "expo-speech";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { CityBackground } from "@/components/CityBackground";
@@ -36,7 +37,11 @@ export default function HomePage() {
     }
   }, [tutorialCompleted, router]);
 
-  const handleAlexTap = () => { tap(); playSFX("tap"); };
+  const handleAlexTap = () => {
+    const phrase = tap();
+    playSFX("tap");
+    Speech.speak(phrase, { language: "en-US", rate: 0.9 });
+  };
   const handleQuestClick = () => {
     playSFX("click");
     router.push(questStarted ? "/map" : "/quest");
