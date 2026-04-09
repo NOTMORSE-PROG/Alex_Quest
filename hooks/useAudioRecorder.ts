@@ -210,6 +210,11 @@ export function useAudioRecorder(): AudioRecorderHook {
   const silentPollsRef = useRef(0);
   const peakDbRef = useRef(-160);
 
+  // Ref-based lock — prevents two overlapping startRecording() calls. React
+  // state updates are async so isRecording can still be false on a rapid
+  // double-tap before setState("recording") has propagated.
+  const isStartingRef = useRef(false);
+
   // Profiles that silently failed on this device — skip them in future attempts
   const failedProfilesRef = useRef<Set<string>>(new Set());
   // How many times we've cycled through ALL profiles — cap to prevent infinite loop
@@ -275,6 +280,11 @@ export function useAudioRecorder(): AudioRecorderHook {
   // ── startRecording ───────────────────────────────────────────────────────────
 
   const startRecording = useCallback(async () => {
+    if (isStartingRef.current) {
+      console.warn(`${TAG} startRecording already in progress — ignoring duplicate call`);
+      return;
+    }
+    isStartingRef.current = true;
     console.log(`${TAG} startRecording called`);
     try {
       setError(null);
@@ -371,6 +381,8 @@ export function useAudioRecorder(): AudioRecorderHook {
       console.error(`${TAG} startRecording failed:`, e);
       setError(e instanceof Error ? e.message : "Failed to start recording");
       setState("idle");
+    } finally {
+      isStartingRef.current = false;
     }
   }, [startMetering]);
 

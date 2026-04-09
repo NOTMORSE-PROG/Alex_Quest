@@ -616,9 +616,9 @@ export default function ChapterPage() {
             blank={currentQ.type === "build" ? currentQ.blank : undefined}
             targetSentence={currentQ.targetSentence}
             listenText={
-              currentQ.type === "build" && currentQ.fullSentenceExpected
-                ? currentQ.fullSentenceExpected
-                : currentQ.expectedAnswer
+              currentQ.type === "speak" && currentQ.targetSentence
+                ? `${currentQ.prompt}. ${currentQ.targetSentence}`
+                : currentQ.prompt
             }
             isRecording={isRecording}
             story={chapter.story}
