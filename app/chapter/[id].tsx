@@ -11,7 +11,7 @@ import { AlexCharacter } from "@/components/AlexCharacter";
 import { QuestionCard } from "@/components/gameplay/QuestionCard";
 import { SpeechInput } from "@/components/gameplay/SpeechInput";
 import { AnswerFeedback } from "@/components/gameplay/AnswerFeedback";
-import { RivalCharacter } from "@/components/gameplay/RivalCharacter";
+import { RivalChat, type RivalMessage } from "@/components/gameplay/RivalChat";
 import { ChapterIntroScene } from "@/components/gameplay/ChapterIntroScene";
 import { QuestCoachmarks } from "@/components/tutorial/QuestCoachmarks";
 import { ProgressDots } from "@/components/ui/ProgressDots";
@@ -84,12 +84,46 @@ export default function ChapterPage() {
     }
   }, [introComplete, questTutorialSeen]);
 
+  // Rival chat conversation thread
+  const [rivalMessages, setRivalMessages] = useState<RivalMessage[]>([]);
+  const [rivalOpeningTyping, setRivalOpeningTyping] = useState(false);
+  const [rivalPromptVisible, setRivalPromptVisible] = useState(false);
+
   // Derive question data
   const questions = chapter?.questions ?? [];
   const currentQ = questions[qIndex];
   const isLast = qIndex === questions.length - 1;
   const attemptKey = `${chapterId}-${currentQ?.id ?? 0}`;
   const currentAttemptCount = attemptCounts[attemptKey] ?? 0;
+
+  // Orchestrated reveal: typing → wrong sentence bubble → centre popup
+  useEffect(() => {
+    if (currentQ?.type !== "rival" || !currentQ.rivalLine) return;
+
+    setRivalMessages([]);
+    setRivalOpeningTyping(true);
+    setRivalPromptVisible(false);
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Beat 1: after 1600ms of typing, drop the wrong sentence
+    timers.push(setTimeout(() => {
+      setRivalMessages([{ role: "rival", text: currentQ.rivalLine! }]);
+      setRivalOpeningTyping(false);
+    }, 1600));
+
+    // Beat 2: 1000ms after the bubble lands, show the centre popup
+    timers.push(setTimeout(() => {
+      setRivalPromptVisible(true);
+    }, 2600));
+
+    // Beat 3: auto-dismiss after 5s of being visible
+    timers.push(setTimeout(() => {
+      setRivalPromptVisible(false);
+    }, 7600));
+
+    return () => timers.forEach(clearTimeout);
+  }, [currentQ?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start background music when chapter begins
   useEffect(() => {
@@ -210,6 +244,7 @@ export default function ChapterPage() {
     }
 
     let result: AssessmentResult;
+    let rivalTranscript = ""; // captured for chat update on rival questions
 
     try {
       // ── identify: simple YES/NO check, no phoneme assessment ──
@@ -262,6 +297,9 @@ export default function ChapterPage() {
           return;
         }
 
+        // Capture transcript for the rival chat thread
+        if (currentQ.type === "rival") rivalTranscript = whisperResult.text.trim();
+
         // We have content — increment attempt and score
         setAnalyzePhase("scoring");
         const newAttemptCount = incrementAttemptCount(chapterId, currentQ.id);
@@ -303,7 +341,36 @@ export default function ChapterPage() {
     }
 
     saveQuestionScore(chapterId, currentQ.id, result);
-    setFeedback(result);
+
+    if (currentQ.type === "rival" && rivalTranscript) {
+      // Step 1 (immediate): student bubble animates in
+      setRivalMessages(prev => [
+        ...prev,
+        { role: "student", text: rivalTranscript },
+      ]);
+
+      // Step 2 (1000ms): rival starts typing
+      setTimeout(() => setRivalOpeningTyping(true), 1000);
+
+      // Step 3 (2600ms): rival reaction pops in after ~1.6s of typing
+      setTimeout(() => {
+        setRivalMessages(prev => [
+          ...prev,
+          {
+            role: "rival",
+            text: result.passed
+              ? (currentQ.rivalReactPass ?? "Okay, you're right.")
+              : (currentQ.rivalReactFail ?? "Ha! Try again."),
+          },
+        ]);
+        setRivalOpeningTyping(false);
+      }, 2600);
+
+      // Step 4 (3200ms): assessment shows after rival has finished reacting
+      setTimeout(() => setFeedback(result), 3200);
+    } else {
+      setFeedback(result);
+    }
 
     if (result.passed) {
       playSFX("correct");
@@ -457,36 +524,44 @@ export default function ChapterPage() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Rival display for rival-type questions */}
-        {currentQ.type === "rival" && (
-          <MotiView
-            from={{ opacity: 0, translateX: 30 }}
-            animate={{ opacity: 1, translateX: 0 }}
-            transition={{ type: "spring" }}
-            style={styles.rivalRow}
-          >
-            <RivalCharacter chapterId={chapterId} />
-            <View style={styles.rivalBubble}>
-              <Text style={styles.rivalText}>"{currentQ.rivalLine}"</Text>
-            </View>
-          </MotiView>
+        {/* Rival questions: chat conversation UI */}
+        {currentQ.type === "rival" ? (
+          <>
+            <MotiView
+              from={{ opacity: 0, translateY: 20 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20 }}
+              style={styles.rivalChatHeader}
+            >
+              <View style={styles.rivalChatDirectionsRow}>
+                <Text style={styles.rivalChatDirectionsIcon}>🎤</Text>
+                <Text style={styles.rivalChatDirections}>{currentQ.directions}</Text>
+              </View>
+            </MotiView>
+            <RivalChat
+              messages={rivalMessages}
+              chapterId={chapterId}
+              isWaiting={rivalOpeningTyping}
+              isStudentProcessing={isAnalyzing}
+            />
+          </>
+        ) : (
+          <QuestionCard
+            question={currentQ.prompt}
+            directions={currentQ.directions}
+            questionNumber={qIndex + 1}
+            total={questions.length}
+            options={currentQ.type === "choice" ? currentQ.options : undefined}
+            blank={currentQ.type === "build" ? currentQ.blank : undefined}
+            targetSentence={currentQ.targetSentence}
+            listenText={
+              currentQ.type === "build" && currentQ.fullSentenceExpected
+                ? currentQ.fullSentenceExpected
+                : currentQ.expectedAnswer
+            }
+            story={chapter.story}
+          />
         )}
-
-        <QuestionCard
-          question={currentQ.prompt}
-          directions={currentQ.directions}
-          questionNumber={qIndex + 1}
-          total={questions.length}
-          options={currentQ.type === "choice" ? currentQ.options : undefined}
-          blank={currentQ.type === "build" ? currentQ.blank : undefined}
-          targetSentence={currentQ.targetSentence}
-          listenText={
-            currentQ.type === "build" && currentQ.fullSentenceExpected
-              ? currentQ.fullSentenceExpected
-              : currentQ.expectedAnswer
-          }
-          story={chapter.story}
-        />
 
         {/* Assessment Feedback */}
         <AnswerFeedback
@@ -558,6 +633,27 @@ export default function ChapterPage() {
         )}
       </ScrollView>
 
+      {/* Rival prompt popup — floats in the centre of the screen */}
+      {currentQ.type === "rival" && rivalPromptVisible && (
+        <MotiView
+          from={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.85 }}
+          transition={{ type: "spring", stiffness: 260, damping: 18 }}
+          style={styles.rivalPromptOverlay}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            style={styles.rivalPromptCard}
+            onPress={() => setRivalPromptVisible(false)}
+          >
+            <Text style={styles.rivalPromptEmoji}>⚔️</Text>
+            <Text style={styles.rivalPromptText}>{currentQ.prompt}</Text>
+            <Text style={styles.rivalPromptSub}>Tap to dismiss</Text>
+          </Pressable>
+        </MotiView>
+      )}
+
       <QuestCoachmarks
         visible={showCoachmarks}
         onDone={() => {
@@ -579,10 +675,70 @@ const styles = StyleSheet.create({
   topBarRight: { flexDirection: "row", alignItems: "center", gap: 6 },
   chapterBadge: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
   chapterEmoji: { fontSize: 22 },
+  rivalChatHeader: {
+    backgroundColor: "white",
+    borderRadius: 24,
+    padding: 20,
+    marginHorizontal: 16,
+    shadowColor: colors.navy,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    gap: 12,
+  },
+  rivalChatDirectionsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  rivalChatDirectionsIcon: {
+    fontSize: 14,
+    marginTop: 1,
+  },
+  rivalChatDirections: {
+    flex: 1,
+    fontFamily: fonts.bodyRegular,
+    fontSize: 13,
+    color: "rgba(26,26,46,0.6)",
+    lineHeight: 19,
+  },
   scroll: { paddingTop: 16, gap: 16 },
-  rivalRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
-  rivalBubble: { flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: 12 },
-  rivalText: { fontFamily: fonts.body, fontSize: 14, color: "white", fontStyle: "italic" },
+  rivalPromptOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  rivalPromptCard: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 32,
+    shadowColor: colors.navy,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+  },
+  rivalPromptEmoji: {
+    fontSize: 36,
+  },
+  rivalPromptText: {
+    fontFamily: fonts.body,
+    fontSize: 17,
+    color: colors.navy,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  rivalPromptSub: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12,
+    color: "rgba(26,26,46,0.4)",
+  },
   speechArea: { paddingHorizontal: 16, alignItems: "center", gap: 10 },
   whisperBanner: {
     backgroundColor: "rgba(255,255,255,0.12)",

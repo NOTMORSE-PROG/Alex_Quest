@@ -12,6 +12,8 @@ export interface Question {
   expectedAnswer: string;
   acceptableAnswers?: string[]; // alternative correct phrasings
   rivalLine?: string; // for 'rival' type — the wrong sentence shown first
+  rivalReactPass?: string; // rival's conceding reaction when student answers correctly
+  rivalReactFail?: string; // rival's smug reaction when student gets it wrong
   hint?: string;
   hint2?: string; // second-level hint after 2 failures
   hint3?: string; // third-level hint — partial answer reveal
@@ -155,6 +157,8 @@ export const chapters: Chapter[] = [
         prompt: "The rival said something wrong. Can you correct it?",
         directions: "Listen to the incorrect sentence. Say the correct version out loud.",
         rivalLine: "I collects food.",
+        rivalReactPass: "Fine… maybe I was wrong.",
+        rivalReactFail: "Ha! That's not right either.",
         expectedAnswer: "The skunk is collecting food.",
         acceptableAnswers: ["The skunk collects food."],
         hint: "Who is really collecting food? Use the correct subject and verb.",
@@ -275,6 +279,8 @@ export const chapters: Chapter[] = [
         prompt: "Correct the rival's sentence!",
         directions: "Listen carefully, then say the corrected version out loud.",
         rivalLine: "The squirrel take the nut and it fall again.",
+        rivalReactPass: "Okay okay, you got me.",
+        rivalReactFail: "Still sounds wrong to me!",
         expectedAnswer: "The squirrel takes the nut and it falls again.",
         acceptableAnswers: ["The squirrel takes the nut and it falls again"],
         hint: "Both 'squirrel' and 'it' are singular — both verbs need -s.",
@@ -384,6 +390,8 @@ export const chapters: Chapter[] = [
         prompt: "The rival used the wrong tense. Correct it!",
         directions: "Listen to the incorrect sentence. Say the corrected version out loud.",
         rivalLine: "Alex fly to the fence and return the hat.",
+        rivalReactPass: "I guess I messed up.",
+        rivalReactFail: "Nice try, but no.",
         expectedAnswer: "Alex flew to the fence and returned the hat.",
         acceptableAnswers: ["Alex flew to the fence and returned the hat"],
         hint: "Both 'fly' and 'return' need to be in the past tense.",
@@ -492,6 +500,8 @@ export const chapters: Chapter[] = [
         prompt: "Fix the rival's incorrect word form!",
         directions: "Listen to the incorrect sentence, then say the correct one out loud.",
         rivalLine: "Alex is bravefully bird.",
+        rivalReactPass: "You're pretty good…",
+        rivalReactFail: "I don't think so!",
         expectedAnswer: "Alex is a brave bird.",
         acceptableAnswers: ["Alex is a brave bird"],
         hint: "Two problems: missing 'a' before bird, and 'bravefully' should be 'brave'.",
@@ -605,6 +615,8 @@ export const chapters: Chapter[] = [
         prompt: "The rival made many mistakes. Can you fix them all?",
         directions: "Listen to the rival's sentence, then say the correct version out loud.",
         rivalLine: "Alex help many animal and he go home.",
+        rivalReactPass: "You win this one.",
+        rivalReactFail: "Not quite. Try again!",
         expectedAnswer: "Alex helped many animals and he went home.",
         acceptableAnswers: ["Alex helped many animals and he went home"],
         hint: "Fix: help → helped, animal → animals, go → went",
