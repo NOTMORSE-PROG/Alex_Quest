@@ -42,11 +42,13 @@ jobs:
           gh release download large-assets \
             --repo NOTMORSE-PROG/Alex_Quest \
             --pattern "*.mp4" \
-            --dir assets/videos
+            --dir assets/videos \
+            --clobber
           gh release download large-assets \
             --repo NOTMORSE-PROG/Alex_Quest \
             --pattern "*.bin" \
-            --dir assets/models
+            --dir assets/models \
+            --clobber
 
       - name: Verify asset files
         run: |
