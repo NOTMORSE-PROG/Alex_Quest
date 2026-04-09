@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -8,6 +9,7 @@ import { questPrologueVideo } from "@/lib/chaptersData";
 import { colors, fonts } from "@/lib/theme";
 import { useGameStore } from "@/store/gameStore";
 import { useAudio } from "@/hooks/useAudio";
+import { MuteButton } from "@/components/ui/GameHeader";
 
 const STORY_BEATS = [
   {
@@ -26,6 +28,7 @@ const STORY_BEATS = [
 
 export default function QuestPage() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [beat, setBeat] = useState(0);
   const [showVideo, setShowVideo] = useState(true);
   const { startQuest } = useGameStore();
@@ -61,6 +64,7 @@ export default function QuestPage() {
   return (
     <View style={styles.container}>
       <View style={[StyleSheet.absoluteFill, styles.bg]} />
+      <MuteButton style={{ position: "absolute", top: insets.top + 10, right: 16, zIndex: 10 }} />
 
       {/* Stars background */}
       {["10%", "25%", "60%", "80%"].map((top, i) => (
@@ -91,8 +95,8 @@ export default function QuestPage() {
         <Text style={styles.beatCounter}>{beat + 1} / {STORY_BEATS.length}</Text>
       </MotiView>
 
-      <Pressable onPress={handleNext} style={styles.btn}>
-        <Text style={styles.btnText}>{isLast ? "Begin the Quest! →" : "Continue →"}</Text>
+      <Pressable onPress={handleNext} style={[styles.btn, { marginBottom: insets.bottom + 24 }]}>
+        <Text style={styles.btnText}>{isLast ? "Begin the Quest!" : "Continue  ▶"}</Text>
       </Pressable>
     </View>
   );
@@ -131,7 +135,7 @@ const styles = StyleSheet.create({
   btn: {
     backgroundColor: colors.gold,
     marginHorizontal: 32,
-    marginBottom: 48,
+    marginBottom: 0,
     paddingVertical: 16,
     borderRadius: 100,
     alignItems: "center",

@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView } from "moti";
 import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { ProgressDots } from "@/components/ui/ProgressDots";
 import { colors, fonts } from "@/lib/theme";
 import { useGameStore } from "@/store/gameStore";
+import { MuteButton } from "@/components/ui/GameHeader";
 
 const STEPS = [
   {
@@ -37,6 +39,7 @@ const STEPS = [
 
 export default function TutorialPage() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const { completeTutorial } = useGameStore();
 
@@ -62,6 +65,7 @@ export default function TutorialPage() {
   return (
     <View style={styles.container}>
       <View style={[StyleSheet.absoluteFill, styles.bg]} />
+      <MuteButton style={{ position: "absolute", top: insets.top + 10, right: 16, zIndex: 10 }} />
 
       <MotiView
         key={step}
@@ -76,10 +80,10 @@ export default function TutorialPage() {
         <Text style={styles.body}>{current.body}</Text>
       </MotiView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
         <ProgressDots total={STEPS.length} current={step} />
         <Pressable onPress={handleNext} style={styles.btn}>
-          <Text style={styles.btnText}>{isLast ? "Let's Go! 🚀" : "Next →"}</Text>
+          <Text style={styles.btnText}>{isLast ? "Let's Go! 🚀" : "Next  ▶"}</Text>
         </Pressable>
       </View>
     </View>
@@ -101,7 +105,7 @@ const styles = StyleSheet.create({
   body: { fontFamily: fonts.body, fontSize: 15, color: "rgba(255,255,255,0.75)", textAlign: "center", lineHeight: 24 },
   footer: {
     paddingHorizontal: 32,
-    paddingBottom: 48,
+    paddingBottom: 0,
     alignItems: "center",
     gap: 20,
   },

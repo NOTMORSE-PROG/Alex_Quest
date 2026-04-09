@@ -59,6 +59,8 @@ export interface GameState {
   introWatched: boolean;
   questStarted: boolean;
   vocabSeenToday: boolean;
+  questTutorialSeen: boolean;
+  muted: boolean;
 
   // Active gameplay
   activeQuestionIndex: number;
@@ -86,6 +88,8 @@ export interface GameState {
   watchIntro: () => void;
   startQuest: () => void;
   markVocabSeen: () => void;
+  markQuestTutorialSeen: () => void;
+  toggleMute: () => void;
   setActiveQuestion: (index: number, chapterId: ChapterId) => void;
   saveQuestionScore: (chapterId: number, questionId: number, result: AssessmentResult) => void;
   clearSessionScores: () => void;
@@ -119,6 +123,8 @@ export const useGameStore = create<GameState>()(
       introWatched: false,
       questStarted: false,
       vocabSeenToday: false,
+      questTutorialSeen: false,
+      muted: false,
       activeQuestionIndex: 0,
       activeChapterId: null,
       questionScores: {},
@@ -156,6 +162,10 @@ export const useGameStore = create<GameState>()(
       startQuest: () => set({ questStarted: true }),
 
       markVocabSeen: () => set({ vocabSeenToday: true }),
+
+      markQuestTutorialSeen: () => set({ questTutorialSeen: true }),
+
+      toggleMute: () => set((state) => ({ muted: !state.muted })),
 
       setActiveQuestion: (index, chapterId) =>
         set({ activeQuestionIndex: index, activeChapterId: chapterId }),
@@ -279,6 +289,8 @@ export const useGameStore = create<GameState>()(
           introWatched: false,
           questStarted: false,
           vocabSeenToday: false,
+          questTutorialSeen: false,
+          muted: false,
           activeQuestionIndex: 0,
           activeChapterId: null,
           questionScores: {},
@@ -292,7 +304,7 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: "alexs-quest-save",
-      version: 7,
+      version: 8,
       storage: createJSONStorage(() => debouncedStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
@@ -340,6 +352,10 @@ export const useGameStore = create<GameState>()(
           if (state.vocabSeenToday === undefined) {
             state.vocabSeenToday = false;
           }
+        }
+        if (version < 8) {
+          if (state.questTutorialSeen === undefined) state.questTutorialSeen = false;
+          if (state.muted === undefined) state.muted = false;
         }
         return state as unknown as GameState;
       },

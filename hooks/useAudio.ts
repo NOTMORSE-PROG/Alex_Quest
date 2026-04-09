@@ -1,33 +1,66 @@
+import { useCallback } from "react";
 import { useAudioPlayer } from "expo-audio";
+import { useGameStore } from "@/store/gameStore";
 
-export type SFX = "correct" | "wrong" | "tap" | "levelUp" | "confetti" | "click" | "vocab";
+export type SFX = "correct" | "wrong" | "tap" | "levelUp" | "confetti" | "click" | "vocab" | "great" | "goodjob" | "awesome";
 
-// Map each SFX to its asset. Files live in assets/sfx/.
-// Replace null values with require('../assets/sfx/correct.mp3') etc. when MP3s are available.
-const SFX_ASSETS: Partial<Record<SFX, number>> = {};
+// ── SFX Assets ────────────────────────────────────────────────────────────────
+// CC0 — Kenney Interface Sounds & Music Jingles (kenney.nl)
+const SFX_ASSETS: Partial<Record<SFX, number>> = {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  correct: require("../assets/sfx/correct.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  wrong: require("../assets/sfx/wrong.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  tap: require("../assets/sfx/tap.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  click: require("../assets/sfx/click.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  vocab: require("../assets/sfx/vocab.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  levelUp: require("../assets/sfx/levelup.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  confetti: require("../assets/sfx/confetti.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  great: require("../assets/sfx/great.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  goodjob: require("../assets/sfx/goodjob.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  awesome: require("../assets/sfx/awesome.ogg"),
+};
+
+const COMPLIMENTS: SFX[] = ["great", "goodjob", "awesome"];
 
 export function useAudio() {
-  const player = useAudioPlayer(undefined);
+  const sfxPlayer = useAudioPlayer(undefined);
+  const muted = useGameStore((s) => s.muted);
 
-  const playSFX = (sfx: SFX) => {
+  const playSFX = useCallback((sfx: SFX) => {
+    if (muted) return;
     const asset = SFX_ASSETS[sfx];
-    if (!asset) return; // silently no-op until MP3 assets are added
+    if (!asset) return;
     try {
-      player.replace(asset);
-      player.play();
+      sfxPlayer.replace(asset);
+      sfxPlayer.play();
     } catch {
       // SFX is non-critical — silently fail
     }
-  };
+  }, [sfxPlayer, muted]);
 
-  const playPronunciation = (uri: string) => {
+  /** Plays a random compliment sting (great / goodjob / awesome) */
+  const playCompliment = useCallback(() => {
+    const pick = COMPLIMENTS[Math.floor(Math.random() * COMPLIMENTS.length)];
+    playSFX(pick);
+  }, [playSFX]);
+
+  const playPronunciation = useCallback((uri: string) => {
     try {
-      player.replace({ uri });
-      player.play();
+      sfxPlayer.replace({ uri });
+      sfxPlayer.play();
     } catch {
       // non-critical — silently fail
     }
-  };
+  }, [sfxPlayer]);
 
-  return { playSFX, playPronunciation };
+  return { playSFX, playCompliment, playPronunciation };
 }

@@ -6,21 +6,25 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system/legacy";
 import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
+import { Audio } from "expo-av";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { QuestionCard } from "@/components/gameplay/QuestionCard";
 import { SpeechInput } from "@/components/gameplay/SpeechInput";
 import { AnswerFeedback } from "@/components/gameplay/AnswerFeedback";
 import { RivalCharacter } from "@/components/gameplay/RivalCharacter";
 import { ChapterIntroScene } from "@/components/gameplay/ChapterIntroScene";
+import { QuestCoachmarks } from "@/components/tutorial/QuestCoachmarks";
 import { ProgressDots } from "@/components/ui/ProgressDots";
+import { MuteButton } from "@/components/ui/GameHeader";
 import { getChapter } from "@/lib/chaptersData";
 import { useAudioRecorder, cleanupAudioFile } from "@/hooks/useAudioRecorder";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
 import { useAudio } from "@/hooks/useAudio";
+import { useMusicPlayer } from "@/hooks/useMusicPlayer";
 import { loadDictionary } from "@/lib/cmuDictionary";
 import { assessAnswer, buildSimpleResult } from "@/lib/assessmentEngine";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
-import { useWhisper, getLastTranscribe } from "@/hooks/useWhisper";
+import { useWhisper } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
 import { RECORDING_TIMEOUT_MS } from "@/lib/config";
 import type { AssessmentResult } from "@/types/assessment";
@@ -35,7 +39,8 @@ export default function ChapterPage() {
   const chapter = getChapter(chapterId);
 
   const { mood, celebrate, worry, resetMood } = useAlexAnimation();
-  const { playSFX } = useAudio();
+  const { playSFX, playCompliment } = useAudio();
+  const { playTrack, pauseTrack, resumeTrack } = useMusicPlayer();
   const {
     completeChapter,
     saveQuestionScore,
@@ -45,6 +50,8 @@ export default function ChapterPage() {
     activeQuestionIndex,
     activeChapterId,
     setActiveQuestion,
+    questTutorialSeen,
+    markQuestTutorialSeen,
   } = useGameStore();
 
   const recorder = useAudioRecorder();
@@ -68,6 +75,15 @@ export default function ChapterPage() {
   // Auto-stop recording after timeout
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Quest coachmarks: show once when intro is done and tutorial hasn't been seen
+  const [showCoachmarks, setShowCoachmarks] = useState(false);
+
+  useEffect(() => {
+    if (introComplete && !questTutorialSeen) {
+      setShowCoachmarks(true);
+    }
+  }, [introComplete, questTutorialSeen]);
+
   // Derive question data
   const questions = chapter?.questions ?? [];
   const currentQ = questions[qIndex];
@@ -75,14 +91,28 @@ export default function ChapterPage() {
   const attemptKey = `${chapterId}-${currentQ?.id ?? 0}`;
   const currentAttemptCount = attemptCounts[attemptKey] ?? 0;
 
+  // Start background music when chapter begins
+  useEffect(() => {
+    if (introComplete) {
+      playTrack("quest");
+    }
+  }, [introComplete, playTrack]);
+
   // Request mic permissions and load dictionary when chapter starts
   useEffect(() => {
     if (!introComplete) return;
 
     async function setup() {
       console.log(`${TAG} setup — requesting mic permission`);
-      const { status } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (status !== "granted") {
+      // Request BOTH expo-speech-recognition and expo-av mic permissions.
+      // On stricter Android ROMs (Oppo ColorOS, MIUI, FunTouch) a grant to one
+      // native module does not always propagate to the other, so the recorder
+      // (expo-av) can still be denied even after the speech module is granted.
+      const [{ status }, avPerm] = await Promise.all([
+        ExpoSpeechRecognitionModule.requestPermissionsAsync(),
+        Audio.requestPermissionsAsync(),
+      ]);
+      if (status !== "granted" || !avPerm.granted) {
         Alert.alert(
           "Microphone Required",
           "Please allow microphone access in Settings so you can speak your answers.",
@@ -278,6 +308,7 @@ export default function ChapterPage() {
     if (result.passed) {
       playSFX("correct");
       celebrate();
+      setTimeout(() => playCompliment(), 400);
     } else {
       playSFX("wrong");
       worry();
@@ -285,7 +316,7 @@ export default function ChapterPage() {
   }, [
     currentQ, feedback, whisper, chapterId,
     incrementAttemptCount, saveQuestionScore, saveRecordingPath,
-    playSFX, celebrate, worry,
+    playSFX, playCompliment, celebrate, worry,
   ]);
 
   // ── Recording controls ────────────────────────────────────────────
@@ -294,6 +325,7 @@ export default function ChapterPage() {
     console.log(`${TAG} handleStartRecording`);
     setRecordingUri(null);
     setNoSpeechError(false);
+    pauseTrack();
     await recorder.startRecording();
     setIsRecording(true);
 
@@ -302,7 +334,7 @@ export default function ChapterPage() {
       console.log(`${TAG} recording auto-timeout reached`);
       handleStopRecordingRef.current?.();
     }, RECORDING_TIMEOUT_MS);
-  }, [isRecording, isAnalyzing, recorder]);
+  }, [isRecording, isAnalyzing, recorder, pauseTrack]);
 
   // Use a ref so the timeout callback always calls the latest version
   const handleStopRecordingRef = useRef<(() => Promise<void>) | null>(null);
@@ -319,8 +351,9 @@ export default function ChapterPage() {
     setIsRecording(false);
     const audioUri = await recorder.stopRecording();
     console.log(`${TAG} audio captured — uri=${audioUri}`);
+    resumeTrack();
     await handleAssess(audioUri);
-  }, [isRecording, recorder, handleAssess]);
+  }, [isRecording, recorder, handleAssess, resumeTrack]);
 
   // Keep ref in sync with latest callback
   useEffect(() => {
@@ -410,8 +443,11 @@ export default function ChapterPage() {
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
         <AlexCharacter mood={mood} variant="small" />
-        <View style={styles.chapterBadge}>
-          <Text style={styles.chapterEmoji}>{chapter.animalEmoji}</Text>
+        <View style={styles.topBarRight}>
+          <MuteButton />
+          <View style={styles.chapterBadge}>
+            <Text style={styles.chapterEmoji}>{chapter.animalEmoji}</Text>
+          </View>
         </View>
       </View>
 
@@ -444,6 +480,12 @@ export default function ChapterPage() {
           options={currentQ.type === "choice" ? currentQ.options : undefined}
           blank={currentQ.type === "build" ? currentQ.blank : undefined}
           targetSentence={currentQ.targetSentence}
+          listenText={
+            currentQ.type === "build" && currentQ.fullSentenceExpected
+              ? currentQ.fullSentenceExpected
+              : currentQ.expectedAnswer
+          }
+          story={chapter.story}
         />
 
         {/* Assessment Feedback */}
@@ -452,7 +494,12 @@ export default function ChapterPage() {
           hint={getCurrentHint()}
           recordingUri={recordingUri}
           onTryAgain={feedback && !feedback.passed ? handleTryAgain : undefined}
-          onListen={feedback && !feedback.passed ? handleListen : undefined}
+          onListen={
+            feedback && !feedback.passed &&
+            (currentQ?.type === 'identify' || currentAttemptCount >= 2)
+              ? handleListen
+              : undefined
+          }
           onNext={feedback?.passed ? handleNext : undefined}
           isLastQuestion={isLast}
         />
@@ -488,19 +535,11 @@ export default function ChapterPage() {
                 <Text style={styles.noSpeechText}>
                   We couldn't hear you — please speak louder and try again!
                 </Text>
-                {/* Debug: last Whisper output — screenshot this if recognition keeps failing */}
-                {(() => {
-                  const diag = getLastTranscribe();
-                  return diag ? (
-                    <Text style={styles.noSpeechDebug}>
-                      debug: {diag.outcome}
-                      {diag.text ? ` "${diag.text}"` : ""}
-                      {diag.offsetMs ? ` vad=${diag.offsetMs}ms` : ""}
-                    </Text>
-                  ) : (
-                    <Text style={styles.noSpeechDebug}>debug: no transcribe yet</Text>
-                  );
-                })()}
+                {recorder.error ? (
+                  <Text style={styles.noSpeechDebug}>
+                    Mic blocked by your phone — check Settings → Apps → Alex&apos;s Quest → Permissions
+                  </Text>
+                ) : null}
               </MotiView>
             )}
 
@@ -518,6 +557,14 @@ export default function ChapterPage() {
           </View>
         )}
       </ScrollView>
+
+      <QuestCoachmarks
+        visible={showCoachmarks}
+        onDone={() => {
+          setShowCoachmarks(false);
+          markQuestTutorialSeen();
+        }}
+      />
     </View>
   );
 }
@@ -529,6 +576,7 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 8 },
   backBtn: { padding: 8 },
   backText: { fontFamily: fonts.body, fontSize: 14, color: "white" },
+  topBarRight: { flexDirection: "row", alignItems: "center", gap: 6 },
   chapterBadge: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
   chapterEmoji: { fontSize: 22 },
   scroll: { paddingTop: 16, gap: 16 },

@@ -1,11 +1,13 @@
 /**
  * MapAlexPinV2 — Alex character on the map with ground shadow,
  * an arrow tether connecting to the current node, and a richer speech bubble.
+ * Shows chapter-specific homesick lines as Alex progresses through the journey.
  */
 import { StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { fonts } from "@/lib/theme";
+import { useGameStore, type ChapterId } from "@/store/gameStore";
 
 interface Props {
   x: number;
@@ -13,26 +15,32 @@ interface Props {
   accentColor?: string;
 }
 
-// Fun messages Alex can say (rotated by chapter position)
+// Homesick messages shown as Alex progresses through the journey
 const MESSAGES = [
   "You're here! 🎯",
-  "Let's go! ⚡",
-  "Keep going! 🌟",
-  "Almost there! 💪",
-  "The top! 🏆",
+  "Miss home... 🌴",
+  "Getting closer! 💪",
+  "Almost there! 🏠",
+  "Home! 🎉",
 ];
 
 export function MapAlexPinV2({ x, y, accentColor = "#F5A623" }: Props) {
-  // Pick message based on Y position (bottom = 1, top = 5)
-  const msgIndex = Math.round((1 - Math.min(y / 1600, 1)) * (MESSAGES.length - 1));
-  const message = MESSAGES[msgIndex] ?? MESSAGES[0];
+  const chapterProgress = useGameStore((s) => s.chapterProgress);
+
+  // Find the highest completed chapter to pick message
+  const highestDone = ([5, 4, 3, 2, 1] as ChapterId[]).find(
+    (id) => chapterProgress[id]?.completed
+  ) ?? 0;
+  // Map 0-5 → index 0-4
+  const msgIndex = Math.min(Math.max(highestDone, 0), MESSAGES.length - 1);
+  const message = MESSAGES[msgIndex];
 
   return (
     <MotiView
       from={{ opacity: 0, scale: 0.4 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 550, type: "spring", stiffness: 200, damping: 16 }}
-      style={[styles.wrapper, { left: x - 68, top: y - 148 }]}
+      style={[styles.wrapper, { left: x - 90, top: y - 148 }]}
     >
       {/* Arrow tether pointing down to node */}
       <View style={[styles.tether, { borderTopColor: accentColor }]} />

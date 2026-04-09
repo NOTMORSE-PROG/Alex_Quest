@@ -8,6 +8,7 @@ import { GameHeader } from "@/components/ui/GameHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
 import { useAudio } from "@/hooks/useAudio";
+import { useMusicPlayer } from "@/hooks/useMusicPlayer";
 import { useGameStore } from "@/store/gameStore";
 import { colors, fonts } from "@/lib/theme";
 
@@ -15,6 +16,7 @@ export default function HomePage() {
   const router = useRouter();
   const { mood, showBubble, bubbleText, tap } = useAlexAnimation();
   const { playSFX } = useAudio();
+  const { playTrack } = useMusicPlayer();
   const tutorialCompleted = useGameStore((s) => s.tutorialCompleted);
   const questStarted = useGameStore((s) => s.questStarted);
   const updateStreak = useGameStore((s) => s.updateStreak);
@@ -22,6 +24,10 @@ export default function HomePage() {
   useEffect(() => {
     updateStreak();
   }, [updateStreak]);
+
+  useEffect(() => {
+    playTrack("home");
+  }, [playTrack]);
 
   useEffect(() => {
     if (!tutorialCompleted) {
@@ -99,7 +105,7 @@ export default function HomePage() {
           <Pressable onPress={handleQuestClick} style={styles.questBtn}>
             <View style={styles.questBtnInner}>
               <Text style={styles.questBtnText}>
-                {questStarted ? "Continue Quest 🗺️" : "Start Quest →"}
+                {questStarted ? "Continue Quest 🗺️" : "Start Quest  ▶"}
               </Text>
             </View>
           </Pressable>

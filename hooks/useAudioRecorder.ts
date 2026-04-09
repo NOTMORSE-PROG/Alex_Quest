@@ -69,10 +69,45 @@ export function useAudioRecorder(): AudioRecorderHook {
         recordingRef.current = null;
       }
 
-      const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
+      // Request expo-av's own mic permission. Some Android ROMs (Oppo ColorOS,
+      // MIUI, Vivo FunTouch) do NOT propagate grants between native modules, so
+      // even though the chapter screen asked expo-speech-recognition for
+      // permission, expo-av may still see "denied" here.
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        console.warn(`${TAG} Audio.requestPermissionsAsync denied`);
+        setError("Microphone permission denied. Please enable mic access in your phone Settings.");
+        setState("idle");
+        return;
+      }
+
+      // Switch the audio session into recording mode. Required on iOS, and
+      // fixes silent 0-byte recordings on Oppo/Vivo Android devices where the
+      // session otherwise stays in playback-only mode.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      // Try the tuned 16kHz mono profile first; fall back to HIGH_QUALITY
+      // preset if the device's encoder rejects it (some budget Android chips).
+      let recording: Audio.Recording;
+      try {
+        ({ recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS));
+        console.log(`${TAG} recording started (16kHz mono profile)`);
+      } catch (primaryErr) {
+        console.error(`${TAG} createAsync failed with primary profile:`, primaryErr);
+        console.log(`${TAG} retrying with HIGH_QUALITY preset`);
+        ({ recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        ));
+        console.log(`${TAG} recording started (HIGH_QUALITY fallback)`);
+      }
       recordingRef.current = recording;
       setState("recording");
-      console.log(`${TAG} recording started successfully`);
     } catch (e) {
       console.error(`${TAG} startRecording failed:`, e);
       setError(e instanceof Error ? e.message : "Failed to start recording");

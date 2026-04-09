@@ -50,7 +50,7 @@ export function VideoPlayer({ source, onEnd, onSkip, showSkip = true }: VideoPla
 
       {showSkip && onSkip && (
         <Pressable onPress={onSkip} style={styles.skipBtn}>
-          <Text style={styles.skipText}>Skip →</Text>
+          <Text style={styles.skipText}>Skip  ▶</Text>
         </Pressable>
       )}
     </View>

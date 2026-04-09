@@ -106,7 +106,7 @@ export default function LessonPage() {
           style={styles.btn}
         >
           <Text style={styles.btnText}>
-            {phase === "info" ? "Watch Lesson →" : "Continue to Assessment →"}
+            {phase === "info" ? "Watch Lesson  ▶" : "Continue to Assessment  ▶"}
           </Text>
         </Pressable>
       </View>

@@ -85,7 +85,7 @@ export function ChapterIntroScene({ chapter, onStart }: Props) {
         style={styles.btnWrapper}
       >
         <Pressable onPress={onStart} style={styles.startBtn}>
-          <Text style={styles.startBtnText}>Start Adventure →</Text>
+          <Text style={styles.startBtnText}>Start Adventure  ▶</Text>
         </Pressable>
       </MotiView>
     </View>

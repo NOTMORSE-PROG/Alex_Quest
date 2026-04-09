@@ -8,6 +8,7 @@ import { ConfettiBlast } from "@/components/animations/ConfettiBlast";
 import { getChapter } from "@/lib/chaptersData";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { useAudio } from "@/hooks/useAudio";
+import { MuteButton } from "@/components/ui/GameHeader";
 import { colors, fonts } from "@/lib/theme";
 import { toIPA } from "@/lib/phonemeData";
 import { getScoreTier } from "@/lib/config";
@@ -76,6 +77,7 @@ export default function RewardPage() {
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.navy, opacity: 0.6 }]} />
 
       <ConfettiBlast fire={showConfetti} />
+      <MuteButton style={{ position: "absolute", top: insets.top + 10, right: 16, zIndex: 10 }} />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Alex celebrating */}
         <MotiView
@@ -162,10 +164,10 @@ export default function RewardPage() {
       >
         {hasNext && (
           <Pressable
-            onPress={() => { playSFX("click"); router.replace(`/lesson/${chapterId + 1}`); }}
+            onPress={() => { playSFX("click"); router.replace(`/journey/${chapterId}`); }}
             style={styles.nextBtn}
           >
-            <Text style={styles.nextBtnText}>Continue to Stage {chapterId + 1} →</Text>
+            <Text style={styles.nextBtnText}>Continue to Stage {chapterId + 1}  ▶</Text>
           </Pressable>
         )}
         <Pressable

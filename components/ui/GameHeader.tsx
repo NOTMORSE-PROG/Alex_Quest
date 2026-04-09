@@ -11,6 +11,8 @@ interface Props {
 export function GameHeader({ transparent = false }: Props) {
   const insets = useSafeAreaInsets();
   const streak = useGameStore((s) => s.streak);
+  const muted = useGameStore((s) => s.muted);
+  const toggleMute = useGameStore((s) => s.toggleMute);
   const router = useRouter();
 
   return (
@@ -21,6 +23,10 @@ export function GameHeader({ transparent = false }: Props) {
         transparent && styles.transparent,
       ]}
     >
+      <Pressable onPress={toggleMute} style={styles.muteBtn}>
+        <Text style={styles.muteIcon}>{muted ? "🔇" : "🔊"}</Text>
+      </Pressable>
+
       {/* Streak — long-press (3s) opens teacher assessment */}
       <Pressable
         onLongPress={() => router.push("/teacher/pin")}
@@ -29,6 +35,17 @@ export function GameHeader({ transparent = false }: Props) {
         <Text style={styles.streakText}>🔥 {streak}</Text>
       </Pressable>
     </View>
+  );
+}
+
+/** Standalone mute button for screens that don't use GameHeader (quest, tutorial, chapter, reward…) */
+export function MuteButton({ style }: { style?: object }) {
+  const muted = useGameStore((s) => s.muted);
+  const toggleMute = useGameStore((s) => s.toggleMute);
+  return (
+    <Pressable onPress={toggleMute} style={[styles.muteBtn, style]}>
+      <Text style={styles.muteIcon}>{muted ? "🔇" : "🔊"}</Text>
+    </Pressable>
   );
 }
 
@@ -42,6 +59,13 @@ const styles = StyleSheet.create({
   },
   transparent: {
     backgroundColor: "transparent",
+  },
+  muteBtn: {
+    padding: 4,
+    marginRight: 8,
+  },
+  muteIcon: {
+    fontSize: 18,
   },
   streakText: {
     color: "white",

@@ -33,6 +33,7 @@ import { chapters } from "@/lib/chaptersData";
 import type { Chapter } from "@/lib/chaptersData";
 import { useGameStore, isChapterUnlocked, type ChapterId } from "@/store/gameStore";
 import { useAudio } from "@/hooks/useAudio";
+import { useMusicPlayer } from "@/hooks/useMusicPlayer";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const AnimatedScrollView = Animated.ScrollView;
@@ -101,6 +102,11 @@ const NodeRow = memo(function NodeRow({
 export default function MapPage() {
   const router = useRouter();
   const { playSFX } = useAudio();
+  const { playTrack } = useMusicPlayer();
+
+  useEffect(() => {
+    playTrack("map");
+  }, [playTrack]);
 
   const {
     currentChapter,

@@ -379,12 +379,15 @@ export function assessAnswer(
   // passed is determined by contentScore only: if the student said the right
   // words they advance, regardless of pronunciation quality.
   const { contentWeight, pronunciationWeight, fluencyWeight } = ASSESSMENT_CONFIG;
-  const overallScore = Math.round(
+  const rawOverall = Math.round(
     contentScore * contentWeight +
       pronunciationScore * pronunciationWeight +
       fluencyScore * fluencyWeight
   );
   const passed = contentScore >= 80;
+  // Cap the displayed score when content is clearly wrong so kids/parents
+  // don't see a misleadingly high number from pronunciation partial credit.
+  const overallScore = contentScore < 50 ? Math.min(rawOverall, contentScore) : rawOverall;
 
   // ── Problem sounds ──
   const problemSounds = extractProblemSounds(wordResults);

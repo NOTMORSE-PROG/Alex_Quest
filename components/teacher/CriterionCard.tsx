@@ -36,6 +36,9 @@ export function CriterionCard({
         <Text style={styles.weight}>{Math.round(criterion.weight * 100)}%</Text>
       </View>
 
+      {/* Scale hint */}
+      <Text style={styles.scaleHint}>9 is the highest, 1 is the lowest.</Text>
+
       {/* Band buttons */}
       <View style={styles.bandsRow}>
         {BANDS.map((band) => {
@@ -104,6 +107,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 14,
     marginLeft: 8,
+  },
+  scaleHint: {
+    color: "rgba(255,255,255,0.45)",
+    fontFamily: fonts.bodyRegular,
+    fontSize: 11,
+    marginBottom: 8,
   },
   bandsRow: {
     flexDirection: "row",

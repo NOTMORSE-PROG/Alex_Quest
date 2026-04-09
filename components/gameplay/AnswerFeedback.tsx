@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { Audio } from "expo-av";
@@ -19,6 +19,17 @@ interface Props {
   isLastQuestion?: boolean;
 }
 
+const PRAISE_LINES = [
+  "Great job! 🌟",
+  "Awesome! Keep it up! 🎉",
+  "You got it! 💪",
+  "Brilliant! 🏆",
+  "Well done! 👏",
+  "Excellent! ⭐",
+  "Fantastic! 🥳",
+  "Perfect! 🎯",
+];
+
 export const AnswerFeedback = memo(function AnswerFeedback({
   result,
   hint,
@@ -30,6 +41,13 @@ export const AnswerFeedback = memo(function AnswerFeedback({
 }: Props) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Pick a random praise line once per result (stable across re-renders)
+  const praiseLine = useMemo(
+    () => PRAISE_LINES[Math.floor(Math.random() * PRAISE_LINES.length)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [result?.timestamp]
+  );
 
   const handlePlayback = useCallback(async () => {
     if (!recordingUri || isPlaying) return;
@@ -68,9 +86,28 @@ export const AnswerFeedback = memo(function AnswerFeedback({
         transition={{ type: "spring", stiffness: 250, damping: 20 }}
         style={[styles.container, passed ? styles.passedBorder : styles.failedBorder, shadows.card]}
       >
-        <Text style={[styles.simpleResultText, passed ? styles.simplePass : styles.simpleFail]}>
-          {passed ? "✓ Correct!" : result.description}
-        </Text>
+        {passed ? (
+          <>
+            <MotiView
+              from={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 16 }}
+            >
+              <Text style={[styles.simpleResultText, styles.simplePass]}>✓ Correct!</Text>
+            </MotiView>
+            <MotiView
+              from={{ opacity: 0, translateY: 8 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{ delay: 200, type: "timing", duration: 300 }}
+            >
+              <Text style={styles.praiseText}>{praiseLine}</Text>
+            </MotiView>
+          </>
+        ) : (
+          <Text style={[styles.simpleResultText, styles.simpleFail]}>
+            {result.description}
+          </Text>
+        )}
 
         {!passed && hint && (
           <View style={styles.hintBox}>
@@ -221,11 +258,22 @@ export const AnswerFeedback = memo(function AnswerFeedback({
         </View>
       )}
 
+      {/* Praise line on correct full answers */}
+      {passed && (
+        <MotiView
+          from={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 18 }}
+        >
+          <Text style={styles.praiseText}>{praiseLine}</Text>
+        </MotiView>
+      )}
+
       {/* Next / Finish button — content gates this */}
       {passed && onNext && (
         <Pressable onPress={onNext} style={styles.nextBtn}>
           <Text style={styles.nextBtnText}>
-            {isLastQuestion ? "Finish Chapter →" : "Next Question →"}
+            {isLastQuestion ? "Finish Chapter" : "Next Question"}
           </Text>
         </Pressable>
       )}
@@ -430,6 +478,12 @@ const styles = StyleSheet.create({
   },
   simpleFail: {
     color: colors.navy,
+  },
+  praiseText: {
+    fontFamily: fonts.display,
+    fontSize: 18,
+    color: colors.gold,
+    textAlign: "center",
   },
   nextBtn: {
     backgroundColor: colors.gold,

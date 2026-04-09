@@ -7,6 +7,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { AppState, ScrollView, Text, View } from "react-native";
 import { BadgeCelebration } from "@/components/ui/BadgeCelebration";
+import { MusicPlayerProvider } from "@/hooks/useMusicPlayer";
 import { flushPendingStorage } from "@/store/gameStore";
 import { ensureWhisperReady } from "@/hooks/useWhisper";
 import {
@@ -85,8 +86,10 @@ export default function RootLayout() {
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
-          <BadgeCelebration />
+          <MusicPlayerProvider>
+            <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
+            <BadgeCelebration />
+          </MusicPlayerProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>
