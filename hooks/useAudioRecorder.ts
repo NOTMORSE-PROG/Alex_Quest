@@ -178,6 +178,8 @@ export function useAudioRecorder(): AudioRecorderHook {
 
   // Profiles that silently failed on this device — skip them in future attempts
   const failedProfilesRef = useRef<Set<string>>(new Set());
+  // How many times we've cycled through ALL profiles — cap to prevent infinite loop
+  const profileCycleCountRef = useRef(0);
 
   // Preferred profile loaded from AsyncStorage (set asynchronously on mount)
   const preferredProfileRef = useRef<string | null>(null);
@@ -288,7 +290,13 @@ export function useAudioRecorder(): AudioRecorderHook {
       const failed = failedProfilesRef.current;
 
       let candidates = ALL_PROFILES.filter(p => !failed.has(p.name));
-      if (candidates.length === 0) candidates = [...ALL_PROFILES]; // reset if all failed
+      if (candidates.length === 0) {
+        profileCycleCountRef.current++;
+        if (profileCycleCountRef.current >= 2) {
+          throw new Error("Recording failed on all audio profiles. Please restart the app or check microphone permissions.");
+        }
+        candidates = [...ALL_PROFILES]; // reset for one more cycle
+      }
 
       if (preferred && !failed.has(preferred)) {
         const preferredProfile = candidates.find(p => p.name === preferred);
@@ -347,6 +355,19 @@ export function useAudioRecorder(): AudioRecorderHook {
 
     try {
       await recording.stopAndUnloadAsync();
+
+      // Reset audio session to playback mode so the next recording starts clean
+      // and expo-audio players can resume without audio framework conflicts.
+      // Without this, Android's AudioManager stays in recording mode and produces
+      // empty files on the next createAsync() — especially on Huawei/OEM devices.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
       const uri = recording.getURI();
       recordingRef.current = null;
       setState("stopped");

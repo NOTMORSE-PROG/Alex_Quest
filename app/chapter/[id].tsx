@@ -24,7 +24,7 @@ import { useMusicPlayer } from "@/hooks/useMusicPlayer";
 import { loadDictionary } from "@/lib/cmuDictionary";
 import { assessAnswer, buildSimpleResult } from "@/lib/assessmentEngine";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
-import { useWhisper } from "@/hooks/useWhisper";
+import { useWhisper, getLastTranscribe } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
 import { RECORDING_TIMEOUT_MS } from "@/lib/config";
 import type { AssessmentResult } from "@/types/assessment";
@@ -314,7 +314,8 @@ export default function ChapterPage() {
         // Empty transcript — Whisper couldn't hear it. Don't burn an attempt
         // and don't pretend the user answered wrong. Show the no-speech UI.
         if (!transcript.trim()) {
-          console.warn(`${TAG} identify Whisper returned empty — showing no-speech error`);
+          const fInfo = await FileSystem.getInfoAsync(audioUri).catch(() => null);
+          console.warn(`${TAG} identify Whisper returned empty — fileSize=${fInfo && 'size' in fInfo ? fInfo.size : '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
           setIsAnalyzing(false);
           setAnalyzePhase(null);
           setNoSpeechError(true);
@@ -341,7 +342,8 @@ export default function ChapterPage() {
 
         // Empty transcript — Whisper couldn't hear speech. Don't count as attempt.
         if (!whisperResult || !whisperResult.text.trim()) {
-          console.warn(`${TAG} Whisper returned empty — showing no-speech error`);
+          const fInfo2 = await FileSystem.getInfoAsync(audioUri).catch(() => null);
+          console.warn(`${TAG} Whisper returned empty — fileSize=${fInfo2 && 'size' in fInfo2 ? fInfo2.size : '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
           setIsAnalyzing(false);
           setAnalyzePhase(null);
           setNoSpeechError(true);
@@ -470,8 +472,8 @@ export default function ChapterPage() {
     setIsRecording(false);
     const audioUri = await recorder.stopRecording();
     console.log(`${TAG} audio captured — uri=${audioUri}`);
-    resumeTrack();
     await handleAssess(audioUri);
+    resumeTrack();
   }, [isRecording, recorder, handleAssess, resumeTrack]);
 
   // Keep ref in sync with latest callback
@@ -685,6 +687,7 @@ export default function ChapterPage() {
                 {__DEV__ && recorder.profileUsed ? (
                   <Text style={styles.noSpeechDebug}>
                     Profile: {recorder.profileUsed} | Peak: {recorder.peakDb.toFixed(0)}dB
+                    {'\n'}Whisper: {getLastTranscribe()?.outcome ?? 'n/a'} — "{getLastTranscribe()?.text ?? ''}"
                   </Text>
                 ) : null}
               </MotiView>

@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
-import { Audio } from "expo-av";
+
 import { MotiView } from "moti";
 import { GameHeader } from "@/components/ui/GameHeader";
 import { ScoreGauge } from "@/components/gameplay/ScoreGauge";
@@ -68,17 +68,7 @@ export default function WordOfTheDayPage() {
     if (phase === "idle") {
       setNoSpeech(false);
       try {
-        // Set audio session before recording. shouldDuckAndroid: false avoids
-        // Oppo/Vivo OEM frameworks suppressing mic input during recording.
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: false,
-          playThroughEarpieceAndroid: false,
-        });
-        // 200ms timing gap — expo-av issue #21782: some OEM devices need the
-        // audio session to fully activate before MediaRecorder can attach.
-        await new Promise(r => setTimeout(r, 200));
+        // Audio mode setup + OEM timing delay is handled inside useAudioRecorder.startRecording()
         await recorder.startRecording();
         setPhase("recording");
       } catch {
