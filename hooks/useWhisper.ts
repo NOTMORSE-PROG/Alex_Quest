@@ -330,7 +330,11 @@ async function transcribeImpl(
       beamSize: 5,
       // Permissive mode for short identify answers — looser thresholds so
       // single-syllable words like "no" / "yes" aren't classified as silence.
-      noSpeechThold: userOpts.permissive ? 0.1 : 0.3,
+      // noSpeechThold semantics: "skip segment if P(no_speech) > threshold"
+      //   0.6 = whisper.cpp default — only skips obvious silence → best for short yes/no
+      //   0.4 = PronounceRight's value — moderate, good for normal sentences
+      // NOTE: lower value is MORE aggressive at rejection, NOT more permissive.
+      noSpeechThold: userOpts.permissive ? 0.6 : 0.4,
       logprobThold: userOpts.permissive ? -1.0 : -0.7,
       suppressNonSpeechTokens: true,
     };

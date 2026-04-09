@@ -90,6 +90,15 @@ export default function ChapterPage() {
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   // "no-speech" shown when Whisper returns empty — user must try again
   const [noSpeechError, setNoSpeechError] = useState(false);
+  // Diagnostic info captured on each failed attempt — always shown (not __DEV__ only)
+  // so the client can screenshot and report what went wrong.
+  const [diagInfo, setDiagInfo] = useState<{
+    profile: string | null;
+    peakDb: number;
+    fileSize: number | null;
+    whisperOutcome: string | null;
+    whisperText: string | null;
+  } | null>(null);
   // Multi-phase loading label during assessment
   type AnalyzePhase = "transcribing" | "scoring" | null;
   const [analyzePhase, setAnalyzePhase] = useState<AnalyzePhase>(null);
@@ -251,16 +260,19 @@ export default function ChapterPage() {
     // ── Guard: audio file too small to contain real speech ──
     // Android m4a @64kbps ≈ 8KB/s; iOS WAV @16kHz ≈ 32KB/s.
     // Under 8KB means a failed or sub-0.5s recording — skip Whisper.
+    let capturedFileSize: number | null = null;
     try {
       const info = await FileSystem.getInfoAsync(audioUri);
-      if (info.exists && "size" in info && typeof info.size === "number" && info.size < 8_000) {
-        console.warn(`${TAG} audio file too small (${info.size} bytes), profile=${recorder.profileUsed} — marking profile failed`);
-        // Mark this recording profile as broken on this device so the next
-        // attempt automatically uses the next fallback (e.g. WAV instead of M4A).
-        recorder.markProfileFailed();
-        setNoSpeechError(true);
-        cleanupAudioFile(audioUri);
-        return;
+      if (info.exists && "size" in info && typeof info.size === "number") {
+        capturedFileSize = info.size;
+        if (info.size < 8_000) {
+          console.warn(`${TAG} audio file too small (${info.size} bytes), profile=${recorder.profileUsed} — marking profile failed`);
+          recorder.markProfileFailed();
+          setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: info.size, whisperOutcome: "file-too-small", whisperText: null });
+          setNoSpeechError(true);
+          cleanupAudioFile(audioUri);
+          return;
+        }
       }
     } catch { /* non-critical — proceed to assess */ }
 
@@ -288,6 +300,7 @@ export default function ChapterPage() {
     // no-speech-style error and don't burn an attempt.
     if (!whisper.isReady) {
       console.warn(`${TAG} whisper not ready (error=${whisper.error ?? "loading"}) — aborting assess`);
+      setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: whisper.error ? `init-error: ${whisper.error}` : "not-ready", whisperText: null });
       setIsAnalyzing(false);
       setAnalyzePhase(null);
       setNoSpeechError(true);
@@ -314,8 +327,9 @@ export default function ChapterPage() {
         // Empty transcript — Whisper couldn't hear it. Don't burn an attempt
         // and don't pretend the user answered wrong. Show the no-speech UI.
         if (!transcript.trim()) {
-          const fInfo = await FileSystem.getInfoAsync(audioUri).catch(() => null);
-          console.warn(`${TAG} identify Whisper returned empty — fileSize=${fInfo && 'size' in fInfo ? fInfo.size : '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
+          console.warn(`${TAG} identify Whisper returned empty — fileSize=${capturedFileSize ?? '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
+          const diag = getLastTranscribe();
+          setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: diag?.outcome ?? "empty-result", whisperText: diag?.text ?? null });
           setIsAnalyzing(false);
           setAnalyzePhase(null);
           setNoSpeechError(true);
@@ -344,8 +358,9 @@ export default function ChapterPage() {
 
         // Empty transcript — Whisper couldn't hear speech. Don't count as attempt.
         if (!whisperResult || !whisperResult.text.trim()) {
-          const fInfo2 = await FileSystem.getInfoAsync(audioUri).catch(() => null);
-          console.warn(`${TAG} Whisper returned empty — fileSize=${fInfo2 && 'size' in fInfo2 ? fInfo2.size : '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
+          console.warn(`${TAG} Whisper returned empty — fileSize=${capturedFileSize ?? '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
+          const diag2 = getLastTranscribe();
+          setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: diag2?.outcome ?? "empty-result", whisperText: diag2?.text ?? null });
           setIsAnalyzing(false);
           setAnalyzePhase(null);
           setNoSpeechError(true);
@@ -455,7 +470,11 @@ export default function ChapterPage() {
     await Speech.stop();
     await new Promise(r => setTimeout(r, 150));
 
-    pauseTrack();
+    // Await music pause so Android AudioFocus is fully released before we
+    // switch to recording mode. Fire-and-forget caused a race condition on
+    // slow Huawei devices where setAudioModeAsync fired while music still held focus.
+    await pauseTrack();
+    await new Promise(r => setTimeout(r, 100));
     await recorder.startRecording();
     setIsRecording(true);
 
@@ -495,6 +514,7 @@ export default function ChapterPage() {
     setFeedback(null);
     setRecordingUri(null);
     setNoSpeechError(false);
+    setDiagInfo(null);
     resetMood();
   }, [resetMood]);
 
@@ -513,6 +533,7 @@ export default function ChapterPage() {
     setFeedback(null);
     setRecordingUri(null);
     setNoSpeechError(false);
+    setDiagInfo(null);
     if (isLast) {
       completeChapter(chapterId);
       setActiveQuestion(0, chapterId);
@@ -693,13 +714,18 @@ export default function ChapterPage() {
                     : getOEMPermissionHint()}
                 </Text>
 
-                {/* Dev diagnostic */}
-                {__DEV__ && recorder.profileUsed ? (
-                  <Text style={styles.noSpeechDebug}>
-                    Profile: {recorder.profileUsed} | Peak: {recorder.peakDb.toFixed(0)}dB
-                    {'\n'}Whisper: {getLastTranscribe()?.outcome ?? 'n/a'} — "{getLastTranscribe()?.text ?? ''}"
-                  </Text>
-                ) : null}
+                {/* Diagnostic panel — always visible so the client can screenshot */}
+                {diagInfo && (
+                  <View style={styles.diagPanel}>
+                    <Text style={styles.diagTitle}>🔍 Diagnostic Info (send screenshot)</Text>
+                    <Text style={styles.diagRow}>
+                      🎤 {diagInfo.profile ?? 'no-profile'} | Peak: {diagInfo.peakDb.toFixed(0)} dB{diagInfo.fileSize != null ? ` | File: ${(diagInfo.fileSize / 1024).toFixed(1)} KB` : ''}
+                    </Text>
+                    <Text style={styles.diagRow}>
+                      🧠 {diagInfo.whisperOutcome ?? (whisper.isReady ? 'ready' : (whisper.error ? `err: ${whisper.error}` : 'loading'))}{diagInfo.whisperText ? ` — "${diagInfo.whisperText}"` : ''}
+                    </Text>
+                  </View>
+                )}
               </MotiView>
             )}
 
@@ -872,6 +898,27 @@ const styles = StyleSheet.create({
     color: "rgba(255,217,102,0.6)",
     textAlign: "center",
     marginTop: 6,
+  },
+  diagPanel: {
+    backgroundColor: "rgba(0,0,0,0.25)",
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 6,
+    alignSelf: "stretch",
+  },
+  diagTitle: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: "rgba(255,217,102,0.8)",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  diagRow: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "center",
+    lineHeight: 16,
   },
   silenceHint: {
     backgroundColor: "rgba(255,180,0,0.12)",

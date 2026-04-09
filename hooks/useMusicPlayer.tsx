@@ -30,13 +30,13 @@ const MUSIC_ASSETS: Record<MusicTrack, number> = {
 
 interface MusicContextValue {
   playTrack: (track: MusicTrack) => void;
-  pauseTrack: () => void;
+  pauseTrack: () => Promise<void>;
   resumeTrack: () => void;
 }
 
 const MusicContext = createContext<MusicContextValue>({
   playTrack: () => {},
-  pauseTrack: () => {},
+  pauseTrack: async () => {},
   resumeTrack: () => {},
 });
 
@@ -81,8 +81,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     } catch { /* non-critical */ }
   }, [muted]);
 
-  const pauseTrack = useCallback(() => {
-    soundRef.current?.pauseAsync().catch(() => {});
+  const pauseTrack = useCallback(async () => {
+    if (!soundRef.current) return;
+    try {
+      await soundRef.current.pauseAsync();
+    } catch { /* non-critical */ }
   }, []);
 
   const resumeTrack = useCallback(() => {
