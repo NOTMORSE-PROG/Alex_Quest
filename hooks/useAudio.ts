@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useAudioPlayer } from "expo-audio";
+import { Audio } from "expo-av";
 import { useGameStore } from "@/store/gameStore";
 
 export type SFX = "correct" | "wrong" | "tap" | "levelUp" | "confetti" | "click" | "vocab" | "great" | "goodjob" | "awesome";
@@ -32,20 +32,24 @@ const SFX_ASSETS: Partial<Record<SFX, number>> = {
 const COMPLIMENTS: SFX[] = ["great", "goodjob", "awesome"];
 
 export function useAudio() {
-  const sfxPlayer = useAudioPlayer(undefined);
   const muted = useGameStore((s) => s.muted);
 
-  const playSFX = useCallback((sfx: SFX) => {
+  const playSFX = useCallback(async (sfx: SFX) => {
     if (muted) return;
     const asset = SFX_ASSETS[sfx];
     if (!asset) return;
     try {
-      sfxPlayer.replace(asset);
-      sfxPlayer.play();
+      const { sound } = await Audio.Sound.createAsync(asset);
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
     } catch {
       // SFX is non-critical — silently fail
     }
-  }, [sfxPlayer, muted]);
+  }, [muted]);
 
   /** Plays a random compliment sting (great / goodjob / awesome) */
   const playCompliment = useCallback(() => {
@@ -53,14 +57,19 @@ export function useAudio() {
     playSFX(pick);
   }, [playSFX]);
 
-  const playPronunciation = useCallback((uri: string) => {
+  const playPronunciation = useCallback(async (uri: string) => {
     try {
-      sfxPlayer.replace({ uri });
-      sfxPlayer.play();
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
     } catch {
       // non-critical — silently fail
     }
-  }, [sfxPlayer]);
+  }, []);
 
   return { playSFX, playCompliment, playPronunciation };
 }

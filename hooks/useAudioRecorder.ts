@@ -1,18 +1,19 @@
 /**
  * Audio recorder hook for capturing audio for Whisper processing.
  *
- * KEY DESIGN DECISION — 44.1kHz instead of 16kHz:
- * Android's MediaRecorder only GUARANTEES 44.1kHz across all devices.
- * Requesting 16kHz (Whisper's native rate) works on most devices but silently
- * fails on many Oppo/Vivo/Xiaomi/budget chipsets — producing a valid file
- * container with no audio data inside.
- * whisper.rn's AudioUtils.java already resamples from any rate to 16kHz
- * (lines 191-193), so 44.1kHz input is handled transparently.
+ * KEY DESIGN DECISION — setAudioModeAsync minimal form:
+ * PronounceRight (the working sister project) uses ONLY:
+ *   { allowsRecordingIOS: true, playsInSilentModeIOS: true }
+ * Adding shouldDuckAndroid: false requests AUDIOFOCUS_GAIN (exclusive) on
+ * Android. Huawei EMUI 10 and some OEMs do not handle this correctly —
+ * the mic ends up suppressed. Omitting it lets Android default to
+ * AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK, which works everywhere.
  *
  * FALLBACK CHAIN:
- *  1. m4a-44k-mono   — 44.1kHz mono  MPEG-4/AAC 128kbps  (primary, widest compat)
- *  2. m4a-44k-stereo — 44.1kHz stereo MPEG-4/AAC 128kbps  (if mono encoder rejected)
- *  3. high-quality   — expo-av HIGH_QUALITY preset (same as #2, final safety net)
+ *  0. 16k-mono      — 16kHz mono   MPEG-4/AAC  64kbps  (primary — proven on Huawei)
+ *  1. m4a-44k-mono  — 44.1kHz mono MPEG-4/AAC 128kbps  (fallback for devices where 16k fails)
+ *  2. m4a-44k-stereo— 44.1kHz stereo MPEG-4/AAC 128kbps
+ *  3. high-quality  — expo-av HIGH_QUALITY preset (final safety net)
  *
  * DYNAMIC PROFILE PERSISTENCE:
  * On successful recording the working profile is saved to AsyncStorage keyed
@@ -44,7 +45,40 @@ const SILENCE_WINDOW = 6; // 6 × 500ms = 3 seconds
 
 // ── Recording Profiles ────────────────────────────────────────────────────────
 
-/** Profile 1 — 44.1kHz mono M4A/AAC (primary, maximum device compatibility) */
+/**
+ * Profile 0 — 16kHz mono M4A/AAC (primary).
+ * Identical to PronounceRight's WHISPER_RECORDING_OPTIONS — proven to work on
+ * Huawei EMUI 10 and other OEM devices. Whisper's native rate; no resampling
+ * overhead. This was the de-facto profile before the 44.1kHz rewrite.
+ */
+const PROFILE_16K_MONO: Audio.RecordingOptions = {
+  isMeteringEnabled: true,
+  android: {
+    extension: ".m4a",
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 64000,
+  },
+  ios: {
+    extension: ".wav",
+    outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+    audioQuality: Audio.IOSAudioQuality.HIGH,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 256000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+    mimeType: "audio/webm",
+    bitsPerSecond: 64000,
+  },
+};
+
+/** Profile 1 — 44.1kHz mono M4A/AAC (fallback for devices where 16kHz fails) */
 const PROFILE_M4A_MONO: Audio.RecordingOptions = {
   isMeteringEnabled: true,
   android: {
@@ -56,7 +90,6 @@ const PROFILE_M4A_MONO: Audio.RecordingOptions = {
     bitRate: 128000,
   },
   ios: {
-    // iOS fully supports 16kHz — keep it for best Whisper accuracy on iOS
     extension: ".wav",
     outputFormat: Audio.IOSOutputFormat.LINEARPCM,
     audioQuality: Audio.IOSAudioQuality.HIGH,
@@ -102,9 +135,10 @@ const PROFILE_M4A_STEREO: Audio.RecordingOptions = {
 };
 
 const ALL_PROFILES: { name: string; options: Audio.RecordingOptions }[] = [
-  { name: "m4a-44k-mono", options: PROFILE_M4A_MONO },
+  { name: "16k-mono",      options: PROFILE_16K_MONO },
+  { name: "m4a-44k-mono",  options: PROFILE_M4A_MONO },
   { name: "m4a-44k-stereo", options: PROFILE_M4A_STEREO },
-  { name: "high-quality", options: Audio.RecordingOptionsPresets.HIGH_QUALITY },
+  { name: "high-quality",  options: Audio.RecordingOptionsPresets.HIGH_QUALITY },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -266,28 +300,14 @@ export function useAudioRecorder(): AudioRecorderHook {
         return;
       }
 
-      // Pre-reset: explicitly release any stale audio session before switching
-      // to recording mode. Huawei EMUI 10 and some OEMs require this two-step
-      // transition; going directly to recording mode can leave the TTS or music
-      // player's audio focus active, causing MediaRecorder to capture silence.
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-      await new Promise(r => setTimeout(r, 150));
-
       // Switch audio session into recording mode.
-      // shouldDuckAndroid: false — ducking causes Oppo ColorOS and Vivo
-      // FunTouch audio frameworks to suppress mic input on some devices.
+      // IMPORTANT: Only set the two properties PronounceRight uses. Omitting
+      // shouldDuckAndroid lets Android default to AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK.
+      // Setting shouldDuckAndroid: false requests exclusive AUDIOFOCUS_GAIN, which
+      // Huawei EMUI 10 doesn't handle cleanly — the mic ends up suppressed.
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: false,
-        playThroughEarpieceAndroid: false,
       });
 
       // 200ms timing gap — expo-av issue #21782: some OEM devices need time for

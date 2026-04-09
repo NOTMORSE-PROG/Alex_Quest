@@ -1,15 +1,20 @@
 /**
  * Global singleton background music player.
- * Keeps ONE AudioPlayer instance for the entire app lifetime so that:
+ * Keeps ONE Audio.Sound instance for the entire app lifetime so that:
  *  - mute/unmute works instantly on the active player
  *  - switching screens doesn't create duplicate players
+ *
+ * Uses expo-av (Audio.Sound) exclusively — NOT expo-audio — to avoid the
+ * dual-library AudioManager conflict that suppresses the microphone on
+ * Huawei/OEM devices. PronounceRight (the working reference project) uses
+ * only expo-av for all audio operations.
  *
  * Usage: call useMusicPlayer() anywhere; call playTrack() to start a track.
  * Mount <MusicPlayerProvider /> once in _layout.tsx.
  */
 import { createContext, useCallback, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { useAudioPlayer } from "expo-audio";
+import { Audio } from "expo-av";
 import { useGameStore } from "@/store/gameStore";
 
 export type MusicTrack = "home" | "map" | "quest";
@@ -36,40 +41,54 @@ const MusicContext = createContext<MusicContextValue>({
 });
 
 export function MusicPlayerProvider({ children }: { children: ReactNode }) {
-  const player = useAudioPlayer(undefined);
+  const soundRef = useRef<Audio.Sound | null>(null);
   const currentTrack = useRef<MusicTrack | null>(null);
   const muted = useGameStore((s) => s.muted);
 
   // React to mute toggle immediately
   useEffect(() => {
+    if (!soundRef.current) return;
     try {
       if (muted) {
-        player.pause();
+        soundRef.current.pauseAsync();
       } else if (currentTrack.current) {
-        player.play();
+        soundRef.current.playAsync();
       }
     } catch { /* non-critical */ }
-  }, [muted, player]);
+  }, [muted]);
 
-  const playTrack = useCallback((track: MusicTrack) => {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      soundRef.current?.unloadAsync().catch(() => {});
+    };
+  }, []);
+
+  const playTrack = useCallback(async (track: MusicTrack) => {
     if (currentTrack.current === track) return; // already playing this track
     try {
-      player.replace(MUSIC_ASSETS[track]);
-      player.loop = true;
-      player.volume = 0.3;
+      // Unload previous track
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync(
+        MUSIC_ASSETS[track],
+        { isLooping: true, volume: 0.3, shouldPlay: !muted }
+      );
+      soundRef.current = sound;
       currentTrack.current = track;
-      if (!muted) player.play();
     } catch { /* non-critical */ }
-  }, [player, muted]);
+  }, [muted]);
 
   const pauseTrack = useCallback(() => {
-    try { player.pause(); } catch { /* non-critical */ }
-  }, [player]);
+    soundRef.current?.pauseAsync().catch(() => {});
+  }, []);
 
   const resumeTrack = useCallback(() => {
     if (muted) return;
-    try { player.play(); } catch { /* non-critical */ }
-  }, [player, muted]);
+    soundRef.current?.playAsync().catch(() => {});
+  }, [muted]);
 
   return (
     <MusicContext.Provider value={{ playTrack, pauseTrack, resumeTrack }}>
