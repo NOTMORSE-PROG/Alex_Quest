@@ -32,10 +32,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Verify LFS files
+      - name: Download large assets from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets/videos assets/models
+          gh release download large-assets \
+            --repo NOTMORSE-PROG/Alex_Quest \
+            --pattern "*.mp4" \
+            --dir assets/videos
+          gh release download large-assets \
+            --repo NOTMORSE-PROG/Alex_Quest \
+            --pattern "*.bin" \
+            --dir assets/models
+
+      - name: Verify asset files
         run: |
           echo "Checking LFS video files..."
           shopt -s nullglob
