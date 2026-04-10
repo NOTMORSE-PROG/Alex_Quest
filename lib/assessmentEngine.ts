@@ -218,6 +218,37 @@ function scoreWord(match: WordMatch): WordResult {
   };
 }
 
+// ── Fuzzy Word Helpers ───────────────────────────────────────────────
+
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const curr = [i, ...Array(n).fill(0)];
+    for (let j = 1; j <= n; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+    }
+    prev = curr;
+  }
+  return prev[n];
+}
+
+/**
+ * Returns true when two normalized words are close enough to count as a match.
+ * Covers common inflections (-s/-es/-ing/-ed) and 1-char edit distance for
+ * words of length ≥ 4 (short stop words like "a"/"an" are kept strict).
+ */
+function wordsClose(a: string, b: string): boolean {
+  if (a === b) return true;
+  for (const suffix of ["s", "es", "ing", "ed"]) {
+    if (a + suffix === b || b + suffix === a) return true;
+  }
+  if (a.length >= 4 && b.length >= 4) return editDistance(a, b) <= 1;
+  return false;
+}
+
 // ── Content Score ────────────────────────────────────────────────────
 
 function computeContentScore(
@@ -243,11 +274,22 @@ function computeContentScore(
     }
   }
 
-  // Word overlap scoring
-  const matched = normSpoken.filter((w) => normExpected.includes(w));
+  // Word overlap scoring (fuzzy — covers inflections and 1-char mishears)
+  const matched = normSpoken.filter((w) => normExpected.some((e) => wordsClose(w, e)));
   const overlap =
     normExpected.length > 0 ? matched.length / normExpected.length : 0;
-  const score = Math.round(overlap * 100);
+  let score = Math.round(overlap * 100);
+
+  // Also try each acceptable alternative with fuzzy matching — take the best score
+  if (acceptableAnswers) {
+    for (const alt of acceptableAnswers) {
+      const altWords = toWords(alt);
+      const altMatched = normSpoken.filter((w) => altWords.some((e) => wordsClose(w, e)));
+      const altScore =
+        altWords.length > 0 ? Math.round((altMatched.length / altWords.length) * 100) : 0;
+      if (altScore > score) score = altScore;
+    }
+  }
 
   if (score >= 90) return { score, feedback: "Almost perfect — just a tiny difference!" };
   if (score >= 70) return { score, feedback: "You got most of the words right!" };
@@ -311,6 +353,22 @@ function extractProblemSounds(wordResults: WordResult[]): ProblemSound[] {
   }
 
   return problems.slice(0, 3); // Max 3 problem sounds (don't overwhelm kids)
+}
+
+// ── Pass Threshold ───────────────────────────────────────────────────
+
+/**
+ * Minimum content score required to pass, adjusted for sentence length.
+ * The flat 80% rule is degenerate for short sentences: 4 words × 80% = 3.2,
+ * so ALL 4 words must match. We allow 1 miss for sentences of 3-5 words.
+ * Sentences of 6+ words use the standard 80%.
+ *
+ * Results: 3w→67%, 4w→75%, 5w→80%, 6+w→80%
+ */
+function contentPassThreshold(wordCount: number): number {
+  if (wordCount <= 2) return 100;
+  if (wordCount <= 5) return Math.ceil(((wordCount - 1) / wordCount) * 100);
+  return 80;
 }
 
 // ── Main Assessment Function (Whisper) ───────────────────────────────
@@ -384,7 +442,7 @@ export function assessAnswer(
       pronunciationScore * pronunciationWeight +
       fluencyScore * fluencyWeight
   );
-  const passed = contentScore >= 80;
+  const passed = contentScore >= contentPassThreshold(expectedWords.length);
   // Cap the displayed score when content is clearly wrong so kids/parents
   // don't see a misleadingly high number from pronunciation partial credit.
   const overallScore = contentScore < 50 ? Math.min(rawOverall, contentScore) : rawOverall;
@@ -550,7 +608,7 @@ export function assessAnswerFallback(
     pronunciationScore,
     fluencyScore,
     // Content gates progression — student passes if they said the right words.
-    passed: contentScore >= 80,
+    passed: contentScore >= contentPassThreshold(expectedWords.length),
     wordResults,
     contentFeedback,
     pronunciationFeedback:
