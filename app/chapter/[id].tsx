@@ -53,6 +53,30 @@ function getOEMPermissionHint(): string {
   return "Settings \u2192 Apps \u2192 Alex\u2019s Quest \u2192 Permissions";
 }
 
+/**
+ * Human-readable explanation for each Whisper outcome code.
+ * Shown in the diagnostic panel so the dev can read a screenshot and know
+ * immediately what failed without needing adb logs.
+ */
+function getDiagExplanation(outcome: string | null, fileSize: number | null, whisperReady: boolean): string {
+  if (!whisperReady && !outcome) return "Speech engine is still loading — wait a moment then try again.";
+  if (!outcome) return "Unknown failure — check logs.";
+  if (outcome === "no-audio-uri") return "Recording failed to produce a file. The mic may be blocked by another app.";
+  if (outcome === "file-too-small") return "Mic captured silence or a sub-1s clip. Check mic permissions / hardware mute.";
+  if (outcome === "not-ready") return "Speech engine is still loading. Wait for the banner to disappear, then try again.";
+  if (outcome === "init-error") return "Speech engine failed to initialize. Tap the retry banner at the top.";
+  if (outcome === "empty-result") {
+    return fileSize && fileSize > 30_000
+      ? "Audio captured OK but Whisper heard nothing. Speak clearly after tapping the mic."
+      : "Very short recording — hold the mic button while speaking, release when done.";
+  }
+  if (outcome === "hallucination") return "Whisper heard background noise instead of speech. Try in a quieter place.";
+  if (outcome === "special-token") return "Whisper returned a non-speech token — try speaking more slowly.";
+  if (outcome.includes("timed out")) return "Device too slow — Whisper took >60s. Try speaking right after tapping the mic button.";
+  if (outcome.startsWith("error:")) return `Technical error: ${outcome.slice(6).trim()}`;
+  return outcome;
+}
+
 export default function ChapterPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -90,17 +114,28 @@ export default function ChapterPage() {
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   // "no-speech" shown when Whisper returns empty — user must try again
   const [noSpeechError, setNoSpeechError] = useState(false);
-  // Diagnostic info captured on each failed attempt — always shown (not __DEV__ only)
-  // so the client can screenshot and report what went wrong.
+  // Full diagnostic snapshot captured on every failed attempt.
+  // Always visible (no __DEV__ guard) so the client can screenshot and report.
   const [diagInfo, setDiagInfo] = useState<{
+    // Step 1 — microphone
     profile: string | null;
     peakDb: number;
     fileSize: number | null;
+    // Step 2 — speech engine
+    whisperReady: boolean;
+    whisperError: string | null;
+    // Step 3 — transcription
     whisperOutcome: string | null;
     whisperText: string | null;
+    elapsedMs: number | null;
+    // Context
+    qType: string;
+    expected: string;
+    attemptNum: number;
   } | null>(null);
-  // Multi-phase loading label during assessment
-  type AnalyzePhase = "transcribing" | "scoring" | null;
+  // Multi-phase loading label during assessment.
+  // "thinking" activates after 15s to reassure slow-device users that Whisper is still working.
+  type AnalyzePhase = "transcribing" | "thinking" | "scoring" | null;
   const [analyzePhase, setAnalyzePhase] = useState<AnalyzePhase>(null);
 
   // Auto-stop recording after timeout
@@ -253,7 +288,12 @@ export default function ChapterPage() {
 
     // ── Guard: no audio captured ──
     if (!audioUri) {
-      setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: null, whisperOutcome: "no-audio-uri", whisperText: null });
+      setDiagInfo({
+        profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: null,
+        whisperReady: whisper.isReady, whisperError: whisper.error,
+        whisperOutcome: "no-audio-uri", whisperText: null, elapsedMs: null,
+        qType: currentQ.type, expected: currentQ.expectedAnswer, attemptNum: currentAttemptCount,
+      });
       setNoSpeechError(true);
       return;
     }
@@ -269,7 +309,12 @@ export default function ChapterPage() {
         if (info.size < 8_000) {
           console.warn(`${TAG} audio file too small (${info.size} bytes), profile=${recorder.profileUsed} — marking profile failed`);
           recorder.markProfileFailed();
-          setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: info.size, whisperOutcome: "file-too-small", whisperText: null });
+          setDiagInfo({
+            profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: info.size,
+            whisperReady: whisper.isReady, whisperError: whisper.error,
+            whisperOutcome: "file-too-small", whisperText: null, elapsedMs: null,
+            qType: currentQ.type, expected: currentQ.expectedAnswer, attemptNum: currentAttemptCount,
+          });
           setNoSpeechError(true);
           cleanupAudioFile(audioUri);
           return;
@@ -286,12 +331,14 @@ export default function ChapterPage() {
         ? currentQ.fullSentenceExpected
         : currentQ.expectedAnswer;
 
-    // Whisper transcription with 15-second timeout to prevent hangs on slow devices
+    // Whisper transcription timeout — 60 seconds for slow devices (Kirin 710A and similar
+    // low-end chips need 20-40s for a 3-4s audio clip with the base.en-q5_1 model).
+    // 15s was too aggressive and caused every transcription to timeout on the client's Huawei.
     const transcribeWithTimeout = (uri: string, opts?: { prompt?: string; permissive?: boolean }) =>
       Promise.race([
         whisper.transcribe(uri, opts),
         new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error("Transcription timed out")), 15_000)
+          setTimeout(() => reject(new Error("Transcription timed out")), 60_000)
         ),
       ]);
 
@@ -301,7 +348,12 @@ export default function ChapterPage() {
     // no-speech-style error and don't burn an attempt.
     if (!whisper.isReady) {
       console.warn(`${TAG} whisper not ready (error=${whisper.error ?? "loading"}) — aborting assess`);
-      setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: whisper.error ? `init-error: ${whisper.error}` : "not-ready", whisperText: null });
+      setDiagInfo({
+        profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize,
+        whisperReady: false, whisperError: whisper.error,
+        whisperOutcome: whisper.error ? "init-error" : "not-ready", whisperText: null, elapsedMs: null,
+        qType: currentQ.type, expected, attemptNum: currentAttemptCount,
+      });
       setIsAnalyzing(false);
       setAnalyzePhase(null);
       setNoSpeechError(true);
@@ -311,26 +363,38 @@ export default function ChapterPage() {
 
     let result: AssessmentResult;
     let rivalTranscript = ""; // captured for chat update on rival questions
+    // Track transcription wall-clock time — important for diagnosing slow-device timeouts.
+    let transcribeStartMs = 0;
 
     try {
       // ── identify: simple YES/NO check, no phoneme assessment ──
       if (currentQ.type === "identify") {
         setAnalyzePhase("transcribing");
+        // After 15s with no result, show "Still thinking…" to reassure slow-device users.
+        const thinkingTimerA = setTimeout(() => setAnalyzePhase("thinking"), 15_000);
         // Permissive mode + "yes no" prompt — single-syllable answers need
         // looser thresholds and a hint to avoid being classified as silence.
+        transcribeStartMs = Date.now();
         const wr = await transcribeWithTimeout(audioUri, {
           prompt: "yes no",
           permissive: true,
         });
+        clearTimeout(thinkingTimerA);
+        const identifyElapsed = Date.now() - transcribeStartMs;
         const transcript = wr?.text ?? "";
-        console.log(`${TAG} identify transcript="${transcript}" expected="${expected}"`);
+        console.log(`${TAG} identify transcript="${transcript}" expected="${expected}" elapsed=${identifyElapsed}ms`);
 
         // Empty transcript — Whisper couldn't hear it. Don't burn an attempt
         // and don't pretend the user answered wrong. Show the no-speech UI.
         if (!transcript.trim()) {
           console.warn(`${TAG} identify Whisper returned empty — fileSize=${capturedFileSize ?? '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
           const diag = getLastTranscribe();
-          setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: diag?.outcome ?? "empty-result", whisperText: diag?.text ?? null });
+          setDiagInfo({
+            profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize,
+            whisperReady: true, whisperError: null,
+            whisperOutcome: diag?.outcome ?? "empty-result", whisperText: diag?.text ?? null, elapsedMs: identifyElapsed,
+            qType: currentQ.type, expected, attemptNum: currentAttemptCount,
+          });
           setIsAnalyzing(false);
           setAnalyzePhase(null);
           setNoSpeechError(true);
@@ -355,13 +419,23 @@ export default function ChapterPage() {
       else {
         console.log(`${TAG} using Whisper for assessment`);
         setAnalyzePhase("transcribing");
+        const thinkingTimerB = setTimeout(() => setAnalyzePhase("thinking"), 15_000);
+        transcribeStartMs = Date.now();
         const whisperResult = await transcribeWithTimeout(audioUri);
+        clearTimeout(thinkingTimerB);
+        const speakElapsed = Date.now() - transcribeStartMs;
+        console.log(`${TAG} Whisper elapsed=${speakElapsed}ms`);
 
         // Empty transcript — Whisper couldn't hear speech. Don't count as attempt.
         if (!whisperResult || !whisperResult.text.trim()) {
           console.warn(`${TAG} Whisper returned empty — fileSize=${capturedFileSize ?? '?'} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`);
           const diag2 = getLastTranscribe();
-          setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: diag2?.outcome ?? "empty-result", whisperText: diag2?.text ?? null });
+          setDiagInfo({
+            profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize,
+            whisperReady: true, whisperError: null,
+            whisperOutcome: diag2?.outcome ?? "empty-result", whisperText: diag2?.text ?? null, elapsedMs: speakElapsed,
+            qType: currentQ.type, expected, attemptNum: currentAttemptCount,
+          });
           setIsAnalyzing(false);
           setAnalyzePhase(null);
           setNoSpeechError(true);
@@ -387,8 +461,14 @@ export default function ChapterPage() {
     } catch (e) {
       console.error(`${TAG} assessment threw:`, e);
       const errMsg = e instanceof Error ? e.message : String(e);
+      const elapsedOnError = transcribeStartMs > 0 ? Date.now() - transcribeStartMs : null;
       const diag3 = getLastTranscribe();
-      setDiagInfo({ profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize, whisperOutcome: `error: ${errMsg.slice(0, 80)}`, whisperText: diag3?.text ?? null });
+      setDiagInfo({
+        profile: recorder.profileUsed, peakDb: recorder.peakDb, fileSize: capturedFileSize,
+        whisperReady: whisper.isReady, whisperError: whisper.error,
+        whisperOutcome: `error: ${errMsg.slice(0, 100)}`, whisperText: diag3?.text ?? null, elapsedMs: elapsedOnError,
+        qType: currentQ.type, expected, attemptNum: currentAttemptCount,
+      });
       // Don't burn an attempt on a technical failure — show no-speech UI.
       setIsAnalyzing(false);
       setAnalyzePhase(null);
@@ -456,7 +536,7 @@ export default function ChapterPage() {
       worry();
     }
   }, [
-    currentQ, feedback, whisper, recorder, chapterId,
+    currentQ, feedback, whisper, recorder, chapterId, currentAttemptCount,
     incrementAttemptCount, saveQuestionScore, saveRecordingPath,
     playSFX, playCompliment, celebrate, worry,
   ]);
@@ -718,15 +798,53 @@ export default function ChapterPage() {
                     : getOEMPermissionHint()}
                 </Text>
 
-                {/* Diagnostic panel — always visible so the client can screenshot */}
+                {/* Diagnostic panel — always visible so the client can screenshot and report */}
                 {diagInfo && (
                   <View style={styles.diagPanel}>
-                    <Text style={styles.diagTitle}>🔍 Diagnostic Info (send screenshot)</Text>
-                    <Text style={styles.diagRow}>
-                      🎤 {diagInfo.profile ?? 'no-profile'} | Peak: {diagInfo.peakDb.toFixed(0)} dB{diagInfo.fileSize != null ? ` | File: ${(diagInfo.fileSize / 1024).toFixed(1)} KB` : ''}
+                    <Text style={styles.diagTitle}>📋 Diagnostic — send screenshot to developer</Text>
+
+                    {/* Context row */}
+                    <Text style={styles.diagContext}>
+                      Q: {diagInfo.qType} · expect "{diagInfo.expected}" · try #{diagInfo.attemptNum + 1}
                     </Text>
-                    <Text style={styles.diagRow}>
-                      🧠 {diagInfo.whisperOutcome ?? (whisper.isReady ? 'ready' : (whisper.error ? `err: ${whisper.error}` : 'loading'))}{diagInfo.whisperText ? ` — "${diagInfo.whisperText}"` : ''}
+
+                    <View style={styles.diagDivider} />
+
+                    {/* Step 1: Microphone */}
+                    <Text style={styles.diagStep}>
+                      {diagInfo.fileSize != null && diagInfo.fileSize >= 8_000 ? '✅' : '❌'}{' '}
+                      STEP 1 — Microphone
+                    </Text>
+                    <Text style={styles.diagDetail}>
+                      Profile: {diagInfo.profile ?? 'none'}{'\n'}
+                      Peak: {diagInfo.peakDb.toFixed(0)} dB · File: {diagInfo.fileSize != null ? `${(diagInfo.fileSize / 1024).toFixed(1)} KB` : 'n/a'}
+                    </Text>
+
+                    {/* Step 2: Speech engine */}
+                    <Text style={styles.diagStep}>
+                      {diagInfo.whisperReady ? '✅' : '❌'}{' '}
+                      STEP 2 — Speech Engine
+                    </Text>
+                    <Text style={styles.diagDetail}>
+                      {diagInfo.whisperReady ? 'Whisper ready' : (diagInfo.whisperError ? `Error: ${diagInfo.whisperError}` : 'Still loading…')}
+                    </Text>
+
+                    {/* Step 3: Transcription */}
+                    <Text style={styles.diagStep}>
+                      {diagInfo.whisperOutcome === 'ok' || (diagInfo.whisperText && diagInfo.whisperText.length > 0) ? '✅' : '❌'}{' '}
+                      STEP 3 — Transcription
+                    </Text>
+                    <Text style={styles.diagDetail}>
+                      Outcome: {diagInfo.whisperOutcome ?? 'n/a'}
+                      {diagInfo.elapsedMs != null ? `  (${(diagInfo.elapsedMs / 1000).toFixed(1)}s)` : ''}
+                      {diagInfo.whisperText ? `\nHeard: "${diagInfo.whisperText}"` : ''}
+                    </Text>
+
+                    <View style={styles.diagDivider} />
+
+                    {/* Human-readable explanation */}
+                    <Text style={styles.diagExplain}>
+                      {getDiagExplanation(diagInfo.whisperOutcome, diagInfo.fileSize, diagInfo.whisperReady)}
                     </Text>
                   </View>
                 )}
@@ -904,25 +1022,53 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   diagPanel: {
-    backgroundColor: "rgba(0,0,0,0.25)",
-    borderRadius: 8,
-    padding: 8,
-    marginTop: 6,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    padding: 10,
+    marginTop: 8,
     alignSelf: "stretch",
+    gap: 4,
   },
   diagTitle: {
     fontFamily: fonts.body,
-    fontSize: 10,
-    color: "rgba(255,217,102,0.8)",
+    fontSize: 11,
+    color: "rgba(255,217,102,0.9)",
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  diagRow: {
+  diagContext: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 10,
+    color: "rgba(255,255,255,0.5)",
+    textAlign: "center",
+  },
+  diagDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginVertical: 4,
+  },
+  diagStep: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 2,
+  },
+  diagDetail: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 10,
+    color: "rgba(255,255,255,0.55)",
+    paddingLeft: 18,
+    lineHeight: 15,
+  },
+  diagExplain: {
     fontFamily: fonts.bodyRegular,
     fontSize: 11,
-    color: "rgba(255,255,255,0.7)",
+    color: "rgba(255,217,102,0.75)",
     textAlign: "center",
     lineHeight: 16,
+    marginTop: 2,
   },
   silenceHint: {
     backgroundColor: "rgba(255,180,0,0.12)",

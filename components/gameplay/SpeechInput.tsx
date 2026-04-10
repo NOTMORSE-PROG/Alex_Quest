@@ -21,7 +21,7 @@ interface Props {
   error: string | null;
   questionType?: QuestionType;
   isAnalyzing?: boolean;
-  analyzePhase?: "transcribing" | "scoring" | null;
+  analyzePhase?: "transcribing" | "thinking" | "scoring" | null;
 }
 
 export function SpeechInput({ state, transcript, interimTranscript, onStart, onStop, error, questionType, isAnalyzing, analyzePhase }: Props) {
@@ -74,13 +74,15 @@ export function SpeechInput({ state, transcript, interimTranscript, onStart, onS
           ? "Tap to stop"
           : analyzePhase === "transcribing"
             ? "Listening to your speech…"
-            : analyzePhase === "scoring"
-              ? "Scoring your answer…"
-              : isAnalyzing
-                ? "Analyzing…"
-                : isProcessing
-                  ? "Processing…"
-                  : "Tap to speak"}
+            : analyzePhase === "thinking"
+              ? "Still thinking, please wait…"
+              : analyzePhase === "scoring"
+                ? "Scoring your answer…"
+                : isAnalyzing
+                  ? "Analyzing…"
+                  : isProcessing
+                    ? "Processing…"
+                    : "Tap to speak"}
       </Text>
     </View>
   );
