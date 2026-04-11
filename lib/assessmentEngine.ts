@@ -396,7 +396,7 @@ export function assessAnswer(
 
   // ── Yes/No shortcut for identify questions ──
   if (questionType === "identify") {
-    return assessYesNo(whisperResult.text, expected, attemptCount);
+    return assessYesNo(whisperResult.text, expected, attemptCount, acceptableAnswers);
   }
 
   // ── Guard: single hallucinated word with near-zero content match ──
@@ -518,14 +518,24 @@ export function assessAnswer(
 function assessYesNo(
   spoken: string,
   expected: string,
-  attemptCount: number
+  attemptCount: number,
+  acceptableAnswers?: string[]
 ): AssessmentResult {
   const normSpoken = normalize(spoken);
   const normExpected = normalize(expected);
   const isYes = normExpected.startsWith("yes");
-  const correct = isYes
+  let correct = isYes
     ? normSpoken === "yes" || normSpoken.startsWith("yes")
     : normSpoken === "no" || normSpoken.startsWith("no");
+
+  // Check extended acceptable answers (e.g. "It is incorrect.", "It's missing something.")
+  if (!correct && acceptableAnswers) {
+    const spokenNorm = toWords(spoken).map(normalize).join(" ");
+    correct = acceptableAnswers.some((alt) => {
+      const altNorm = toWords(alt).map(normalize).join(" ");
+      return altNorm === spokenNorm;
+    });
+  }
 
   const score = correct ? 100 : 0;
   const result: AssessmentResult = {
