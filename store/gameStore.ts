@@ -81,8 +81,13 @@ export interface GameState {
   earnedBadges: EarnedBadge[];
   pendingBadgeNotifications: string[];
 
+  // Home background — tracks which chapter's location the home screen should display.
+  // null = default City scene (before any quest is accepted).
+  homeLocationChapterId: ChapterId | null;
+
   // Actions
   setCurrentChapter: (id: ChapterId) => void;
+  setHomeLocation: (id: ChapterId) => void;
   completeChapter: (id: ChapterId) => void;
   completeTutorial: () => void;
   watchIntro: () => void;
@@ -134,8 +139,10 @@ export const useGameStore = create<GameState>()(
       wotdHistory: {},
       earnedBadges: [],
       pendingBadgeNotifications: [],
+      homeLocationChapterId: null,
 
       setCurrentChapter: (id) => set({ currentChapter: id }),
+      setHomeLocation: (id) => set({ homeLocationChapterId: id }),
 
       completeChapter: (id) => {
         set((state) => ({
@@ -300,11 +307,12 @@ export const useGameStore = create<GameState>()(
           wotdHistory: {},
           earnedBadges: [],
           pendingBadgeNotifications: [],
+          homeLocationChapterId: null,
         }),
     }),
     {
       name: "alexs-quest-save",
-      version: 8,
+      version: 9,
       storage: createJSONStorage(() => debouncedStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
@@ -356,6 +364,9 @@ export const useGameStore = create<GameState>()(
         if (version < 8) {
           if (state.questTutorialSeen === undefined) state.questTutorialSeen = false;
           if (state.muted === undefined) state.muted = false;
+        }
+        if (version < 9) {
+          if (state.homeLocationChapterId === undefined) state.homeLocationChapterId = null;
         }
         return state as unknown as GameState;
       },

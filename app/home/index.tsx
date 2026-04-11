@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
-import { CityBackground } from "@/components/CityBackground";
+import { HomeBackground } from "@/components/home/HomeBackground";
 import { GameHeader } from "@/components/ui/GameHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { useAlexAnimation } from "@/hooks/useAlexAnimation";
@@ -20,6 +20,7 @@ export default function HomePage() {
   const { playTrack } = useMusicPlayer();
   const tutorialCompleted = useGameStore((s) => s.tutorialCompleted);
   const questStarted = useGameStore((s) => s.questStarted);
+  const homeLocationChapterId = useGameStore((s) => s.homeLocationChapterId);
   const updateStreak = useGameStore((s) => s.updateStreak);
 
   useEffect(() => {
@@ -51,10 +52,8 @@ export default function HomePage() {
 
   return (
     <View style={styles.container}>
-      {/* City background */}
-      <View style={StyleSheet.absoluteFill}>
-        <CityBackground />
-      </View>
+      {/* Location background — changes as Alex progresses through the story */}
+      <HomeBackground chapterId={homeLocationChapterId} />
 
       <GameHeader transparent />
 

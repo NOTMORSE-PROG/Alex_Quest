@@ -127,6 +127,7 @@ export default function MapPage() {
     currentChapter,
     chapterProgress,
     setCurrentChapter,
+    setHomeLocation,
     activeChapterId,
     activeQuestionIndex,
   } = useGameStore();
@@ -252,8 +253,9 @@ export default function MapPage() {
     const id = selectedChapter.id as ChapterId;
     setSelectedChapter(null);
     setCurrentChapter(id);
+    setHomeLocation(id); // Update home background to reflect the accepted quest's location
     router.push(`/lesson/${id}`);
-  }, [selectedChapter, setCurrentChapter, router]);
+  }, [selectedChapter, setCurrentChapter, setHomeLocation, router]);
 
   const completedSegments = (Object.keys(chapterProgress) as unknown as ChapterId[]).filter(
     (id) => chapterProgress[id].completed
