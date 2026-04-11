@@ -164,7 +164,7 @@ export default function RewardPage() {
       >
         {hasNext ? (
           <Pressable
-            onPress={() => { playSFX("click"); router.replace(`/journey/${chapterId}`); }}
+            onPress={() => { playSFX("click"); router.replace(`/map?from=${chapterId}`); }}
             style={styles.nextBtn}
           >
             <Text style={styles.nextBtnText}>Continue to Stage {chapterId + 1}  ▶</Text>

@@ -120,31 +120,28 @@ export default function ChapterPage() {
   const attemptKey = `${chapterId}-${currentQ?.id ?? 0}`;
   const currentAttemptCount = attemptCounts[attemptKey] ?? 0;
 
-  // Orchestrated reveal: typing → wrong sentence bubble → centre popup
+  // Orchestrated reveal: the rival's wrong sentence was already shown (and
+  // spoken aloud via TTS) in the ChapterIntroScene cutscene, so we skip the
+  // opening typing animation and show the bubble immediately.
   useEffect(() => {
     if (currentQ?.type !== "rival" || !currentQ.rivalLine) return;
 
-    setRivalMessages([]);
-    setRivalOpeningTyping(true);
+    // Show the rival's line immediately (no typing delay — already seen in intro)
+    setRivalMessages([{ role: "rival", text: currentQ.rivalLine }]);
+    setRivalOpeningTyping(false);
     setRivalPromptVisible(false);
 
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // Beat 1: after 1600ms of typing, drop the wrong sentence
-    timers.push(setTimeout(() => {
-      setRivalMessages([{ role: "rival", text: currentQ.rivalLine! }]);
-      setRivalOpeningTyping(false);
-    }, 1600));
-
-    // Beat 2: 1000ms after the bubble lands, show the centre popup
+    // Show the centre prompt popup shortly after the question loads
     timers.push(setTimeout(() => {
       setRivalPromptVisible(true);
-    }, 2600));
+    }, 800));
 
-    // Beat 3: auto-dismiss after 5s of being visible
+    // Auto-dismiss after 5s of being visible
     timers.push(setTimeout(() => {
       setRivalPromptVisible(false);
-    }, 7600));
+    }, 5800));
 
     return () => timers.forEach(clearTimeout);
   }, [currentQ?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -379,7 +376,8 @@ export default function ChapterPage() {
           expected,
           currentQ.acceptableAnswers,
           currentQ.type,
-          newAttemptCount - 1
+          newAttemptCount - 1,
+          `Think about ${chapter.animal}'s situation in the story`
         );
         console.log(`${TAG} Whisper assessment — passed=${result.passed} score=${result.overallScore}`);
       }
@@ -452,7 +450,7 @@ export default function ChapterPage() {
       worry();
     }
   }, [
-    currentQ, feedback, whisper, recorder, chapterId,
+    currentQ, feedback, whisper, recorder, chapterId, chapter,
     incrementAttemptCount, saveQuestionScore, saveRecordingPath,
     playSFX, playCompliment, celebrate, worry,
   ]);
@@ -578,7 +576,17 @@ export default function ChapterPage() {
   }
 
   if (!introComplete) {
-    return <ChapterIntroScene chapter={chapter} onStart={() => setIntroComplete(true)} />;
+    const rivalQ = chapter.questions.find(q => q.type === "rival");
+    const RIVAL_EMOJIS = ["🦨", "🐿️", "🐓", "🦉", "🦜"];
+    const rivalEmoji = rivalQ ? RIVAL_EMOJIS[(chapterId - 1) % RIVAL_EMOJIS.length] : undefined;
+    return (
+      <ChapterIntroScene
+        chapter={chapter}
+        onStart={() => setIntroComplete(true)}
+        rivalLine={rivalQ?.rivalLine}
+        rivalEmoji={rivalEmoji}
+      />
+    );
   }
 
   return (

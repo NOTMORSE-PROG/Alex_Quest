@@ -184,9 +184,20 @@ export const AnswerFeedback = memo(function AnswerFeedback({
             </View>
           </View>
 
-          {/* Phoneme Breakdown */}
+          {/* What the student said — clarifies the phoneme grid below shows the TARGET */}
+          {result.spokenText ? (
+            <View style={styles.spokenRow}>
+              <Text style={styles.spokenLabel}>You said: </Text>
+              <Text style={styles.spokenText} numberOfLines={2}>{result.spokenText}</Text>
+            </View>
+          ) : null}
+
+          {/* Phoneme Breakdown — shows YOUR pronunciation of words you actually said */}
           {hasPronunciationDetail && (
-            <PhonemeBreakdown wordResults={result.wordResults} />
+            <>
+              <Text style={styles.phonemeGridLabel}>YOUR PRONUNCIATION</Text>
+              <PhonemeBreakdown wordResults={result.wordResults} />
+            </>
           )}
 
           {/* Problem Sounds — always show if any (even on pass, as coaching) */}
@@ -374,6 +385,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: `${colors.navy}99`,
     lineHeight: 17,
+    marginTop: 2,
+  },
+  spokenRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: `${colors.navy}07`,
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    flexWrap: "wrap",
+  },
+  spokenLabel: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: `${colors.navy}88`,
+  },
+  spokenText: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12,
+    color: colors.navy,
+    flex: 1,
+    fontStyle: "italic",
+  },
+  phonemeGridLabel: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: `${colors.navy}66`,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
     marginTop: 2,
   },
 

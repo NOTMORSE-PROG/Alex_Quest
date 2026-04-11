@@ -1,15 +1,19 @@
 import {
   Dimensions,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 import { useRef, useState, useCallback, useEffect, memo } from "react";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
+  useAnimatedStyle,
+  withTiming,
   runOnJS,
 } from "react-native-reanimated";
+import { AlexCharacter } from "@/components/AlexCharacter";
 
 import { BottomNav } from "@/components/ui/BottomNav";
 import { NODE_POSITIONS, CANVAS_HEIGHT, CANVAS_WIDTH } from "@/components/map/MapPath";
@@ -29,6 +33,8 @@ import { MapJumpButton } from "@/components/map/MapJumpButton";
 import { MapChapterPopup } from "@/components/map/MapChapterPopup";
 import { MapCompletionBurst } from "@/components/map/MapCompletionBurst";
 
+import { MotiView } from "moti";
+import { fonts } from "@/lib/theme";
 import { chapters } from "@/lib/chaptersData";
 import type { Chapter } from "@/lib/chaptersData";
 import { useGameStore, isChapterUnlocked, type ChapterId } from "@/store/gameStore";
@@ -37,6 +43,14 @@ import { useMusicPlayer } from "@/hooks/useMusicPlayer";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const AnimatedScrollView = Animated.ScrollView;
+
+const CHAPTER_NAMES: Record<number, string> = {
+  1: "The Bakery District",
+  2: "The Fountain Square",
+  3: "The Forest Trail",
+  4: "The Farm Fields",
+  5: "The Enchanted Forest",
+};
 
 // Chapter accent colors for passing to MapAlexPinV2
 const CHAPTER_ACCENTS: Record<number, string> = {
@@ -101,6 +115,7 @@ const NodeRow = memo(function NodeRow({
 // ─────────────────────────────────────────────────────────────────────────────
 export default function MapPage() {
   const router = useRouter();
+  const { from: fromParam } = useLocalSearchParams<{ from?: string }>();
   const { playSFX } = useAudio();
   const { playTrack } = useMusicPlayer();
 
@@ -115,6 +130,25 @@ export default function MapPage() {
     activeChapterId,
     activeQuestionIndex,
   } = useGameStore();
+
+  // ── Walking cutscene (runs on the live map instead of a separate screen) ──
+  const fromChapterId = fromParam ? Number(fromParam) : null;
+  const [walkPhase, setWalkPhase] = useState<"idle" | "walking" | "arrived">(
+    fromChapterId ? "walking" : "idle"
+  );
+  const [walkReady, setWalkReady] = useState(false);
+  const walkX = useSharedValue(0);
+  const walkY = useSharedValue(0);
+
+  const walkStyle = useAnimatedStyle(() => ({
+    position: "absolute",
+    left: 0,
+    top: 0,
+    transform: [
+      { translateX: walkX.value - 24 },
+      { translateY: walkY.value - 52 },
+    ],
+  }));
 
   // Reanimated shared value for parallax
   const scrollY = useSharedValue(0);
@@ -148,14 +182,59 @@ export default function MapPage() {
     },
   });
 
-  // Auto-scroll to current chapter node on mount
+  // Auto-scroll to current chapter node on mount (skip when walking cutscene handles it)
   useEffect(() => {
+    if (fromChapterId) return;
     const nodePos = NODE_POSITIONS[currentChapter - 1];
     const targetY = Math.max(0, nodePos.y - SCREEN_H * 0.5);
     setTimeout(() => {
       scrollRef.current?.scrollTo({ y: targetY, animated: true });
     }, 450);
-  }, [currentChapter]);
+  }, [currentChapter]); // eslint-disable-line
+
+  // Walking cutscene: animate Alex from old pin to new pin on the live map
+  useEffect(() => {
+    if (!fromChapterId) return;
+    const fromPos = NODE_POSITIONS[fromChapterId - 1];
+    const toPos = NODE_POSITIONS[currentChapter - 1];
+
+    const midCanvasY = (fromPos.y + toPos.y) / 2;
+    const scrollTop = Math.max(0, midCanvasY - SCREEN_H * 0.55);
+
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: scrollTop, animated: false });
+    }, 60);
+
+    const fromSX = fromPos.x;
+    const fromSY = fromPos.y - scrollTop;
+    const toSX = toPos.x;
+    const toSY = toPos.y - scrollTop;
+
+    walkX.value = fromSX;
+    walkY.value = fromSY;
+    setWalkReady(true);
+
+    const t = setTimeout(() => {
+      walkX.value = withTiming(toSX, { duration: 2200 });
+      walkY.value = withTiming(toSY, { duration: 2200 }, (finished) => {
+        if (finished) runOnJS(setWalkPhase)("arrived");
+      });
+    }, 500);
+
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line
+
+  // After "arrived" toast shows, clean up and scroll to current node
+  useEffect(() => {
+    if (walkPhase !== "arrived") return;
+    const t = setTimeout(() => {
+      setWalkPhase("idle");
+      const nodePos = NODE_POSITIONS[currentChapter - 1];
+      const targetY = Math.max(0, nodePos.y - SCREEN_H * 0.5);
+      scrollRef.current?.scrollTo({ y: targetY, animated: true });
+    }, 2600);
+    return () => clearTimeout(t);
+  }, [walkPhase, currentChapter]);
 
   const jumpToCurrent = useCallback(() => {
     const nodePos = NODE_POSITIONS[currentChapter - 1];
@@ -264,17 +343,48 @@ export default function MapPage() {
             );
           })}
 
-          {/* ── Alex pin on current stage ── */}
-          <MapAlexPinV2
-            x={currentPos.x}
-            y={currentPos.y}
-            accentColor={CHAPTER_ACCENTS[currentChapter]}
-          />
+          {/* ── Alex pin on current stage (hidden during walk cutscene) ── */}
+          {walkPhase === "idle" && (
+            <MapAlexPinV2
+              x={currentPos.x}
+              y={currentPos.y}
+              accentColor={CHAPTER_ACCENTS[currentChapter]}
+            />
+          )}
         </AnimatedScrollView>
 
         {/* ─── Fixed overlays (outside scroll) ─── */}
         <MapHeader bgOpacity={headerBgOpacity} />
-        <MapJumpButton visible={showJumpBtn} onPress={jumpToCurrent} />
+        <MapJumpButton visible={walkPhase === "idle" && showJumpBtn} onPress={jumpToCurrent} />
+
+        {/* ─── Walking cutscene overlay ─── */}
+        {walkPhase !== "idle" && walkReady && (
+          <Animated.View style={walkStyle} pointerEvents="none">
+            <AlexCharacter
+              mood={walkPhase === "arrived" ? "cheer" : "happy"}
+              variant="small"
+            />
+          </Animated.View>
+        )}
+
+        {/* ─── Stage unlocked toast (shown when Alex arrives) ─── */}
+        {walkPhase === "arrived" && fromChapterId && (
+          <MotiView
+            from={{ opacity: 0, scale: 0.8, translateY: 20 }}
+            animate={{ opacity: 1, scale: 1, translateY: 0 }}
+            transition={{ type: "spring", stiffness: 240, damping: 18 }}
+            style={styles.journeyToast}
+            pointerEvents="none"
+          >
+            <Text style={styles.journeyToastEmoji}>🎉</Text>
+            <Text style={styles.journeyToastTitle}>
+              Stage {Math.min(fromChapterId + 1, 5)} Unlocked!
+            </Text>
+            <Text style={styles.journeyToastSub}>
+              {CHAPTER_NAMES[Math.min(fromChapterId + 1, 5)]}
+            </Text>
+          </MotiView>
+        )}
 
         {/* ─── Chapter popup ─── */}
         <MapChapterPopup
@@ -309,5 +419,35 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  journeyToast: {
+    position: "absolute",
+    bottom: 120,
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.97)",
+    borderRadius: 24,
+    paddingHorizontal: 32,
+    paddingVertical: 20,
+    alignItems: "center",
+    gap: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 12,
+    zIndex: 100,
+  },
+  journeyToastEmoji: { fontSize: 36 },
+  journeyToastTitle: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 20,
+    color: "#1F2937",
+    textAlign: "center",
+  },
+  journeyToastSub: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: "#6B7280",
+    textAlign: "center",
   },
 });

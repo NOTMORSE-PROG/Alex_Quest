@@ -107,6 +107,8 @@ export interface AssessmentResult {
   source: "whisper" | "fallback-local" | "simple";
   /** Timestamp of assessment */
   timestamp: number;
+  /** What Whisper actually heard the student say (for display in feedback) */
+  spokenText?: string;
 }
 
 // ── Whisper Result Type ──────────────────────────────────────────────

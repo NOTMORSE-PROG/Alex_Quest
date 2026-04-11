@@ -332,10 +332,12 @@ async function transcribeImpl(
       // single-syllable words like "no" / "yes" aren't classified as silence.
       // noSpeechThold semantics: "skip segment if P(no_speech) > threshold"
       //   0.6 = whisper.cpp default — only skips obvious silence → best for short yes/no
-      //   0.4 = PronounceRight's value — moderate, good for normal sentences
-      // NOTE: lower value is MORE aggressive at rejection, NOT more permissive.
-      noSpeechThold: userOpts.permissive ? 0.6 : 0.4,
-      logprobThold: userOpts.permissive ? -1.0 : -0.7,
+      //   0.5 = standard mode (raised from 0.4) — accepts softer voices that
+      //         whisper previously rejected as "no speech". Lower = more aggressive.
+      // logprobThold raised from -0.7 → -0.9 to accept lower-confidence tokens
+      //   from quiet speakers without discarding the segment.
+      noSpeechThold: userOpts.permissive ? 0.6 : 0.5,
+      logprobThold: userOpts.permissive ? -1.0 : -0.9,
       suppressNonSpeechTokens: true,
     };
     if (offsetMs > 0) opts.offset = offsetMs;

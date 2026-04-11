@@ -126,6 +126,7 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
           <Text style={styles.directions}>{directions}</Text>
         </View>
       )}
+
       {hint && <Text style={styles.hint}>💡 {hint}</Text>}
 
       {/* Story context modal */}

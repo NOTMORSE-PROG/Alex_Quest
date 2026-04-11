@@ -87,7 +87,7 @@ export const PhonemeBreakdown = memo(function PhonemeBreakdown({ wordResults }: 
 
   return (
     <View style={styles.container}>
-      {wordResults.map((word, wi) => (
+      {wordResults.filter(w => w.status !== "missing").map((word, wi) => (
         <View key={`${word.word}-${wi}`} style={styles.wordGroup}>
           <Text style={styles.wordLabel}>{word.word}</Text>
           <View style={styles.phonemeRow}>

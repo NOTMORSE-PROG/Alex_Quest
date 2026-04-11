@@ -38,10 +38,13 @@ const DEVICE_KEY = Platform.OS === "android"
 
 // ── Silence-detection constants ──────────────────────────────────────────────
 const METER_INTERVAL_MS = 500;
-/** dB threshold — readings below this count toward the silence window */
-const SILENCE_THRESHOLD_DB = -35;
-/** How many consecutive silent polls before flagging silenceDetected */
-const SILENCE_WINDOW = 6; // 6 × 500ms = 3 seconds
+/** dB threshold — readings below this count toward the silence window.
+ *  -50 dB is more permissive than the original -35 dB, so soft-but-audible
+ *  voices are no longer mis-classified as silence. */
+const SILENCE_THRESHOLD_DB = -50;
+/** How many consecutive silent polls before flagging silenceDetected.
+ *  4 × 500ms = 2 s (was 3 s) — faster warning for true silence. */
+const SILENCE_WINDOW = 4;
 
 // ── Recording Profiles ────────────────────────────────────────────────────────
 

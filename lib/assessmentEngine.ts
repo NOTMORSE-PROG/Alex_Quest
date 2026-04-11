@@ -40,6 +40,7 @@ function toWords(text: string): string[] {
   return normalize(text).split(" ").filter(Boolean);
 }
 
+
 // ── Word Matching ────────────────────────────────────────────────────
 
 interface WordMatch {
@@ -242,8 +243,13 @@ function editDistance(a: string, b: string): number {
  */
 function wordsClose(a: string, b: string): boolean {
   if (a === b) return true;
-  for (const suffix of ["s", "es", "ing", "ed"]) {
-    if (a + suffix === b || b + suffix === a) return true;
+  // Require both words to be ≥ 2 chars before applying suffix rules.
+  // Without this guard, single-char words like "I" (length 1) incorrectly
+  // match "is" via the "i" + "s" suffix path, inflating content scores.
+  if (a.length >= 2 && b.length >= 2) {
+    for (const suffix of ["s", "es", "ing", "ed"]) {
+      if (a + suffix === b || b + suffix === a) return true;
+    }
   }
   if (a.length >= 4 && b.length >= 4) return editDistance(a, b) <= 1;
   return false;
@@ -382,7 +388,8 @@ export function assessAnswer(
   expected: string,
   acceptableAnswers?: string[],
   questionType?: string,
-  attemptCount: number = 0
+  attemptCount: number = 0,
+  storyHint?: string
 ): AssessmentResult {
   const expectedWords = toWords(expected);
   const spokenWords = toWords(whisperResult.text);
@@ -390,6 +397,18 @@ export function assessAnswer(
   // ── Yes/No shortcut for identify questions ──
   if (questionType === "identify") {
     return assessYesNo(whisperResult.text, expected, attemptCount);
+  }
+
+  // ── Guard: single hallucinated word with near-zero content match ──
+  // Whisper occasionally returns a one-word phrase for near-silent audio
+  // (e.g., "Yeah", "Hmm"). These pass the hallucination-keyword filter but
+  // produce a meaningless score. Treat as no-speech: return a clearly-failed
+  // result with contentScore 0 so the caller can show the no-speech banner.
+  if (spokenWords.length <= 1) {
+    const { score: contentScore } = computeContentScore(expectedWords, spokenWords, acceptableAnswers);
+    if (contentScore < 30) {
+      return buildSimpleResult(false, whisperResult.text, expected);
+    }
   }
 
   // ── Match words ──
@@ -484,11 +503,12 @@ export function assessAnswer(
     hintLevel,
     source: "whisper",
     timestamp: Date.now(),
+    spokenText: whisperResult.text.trim(),
   };
 
   // Generate dynamic feedback
-  result.description = generateDescription(result, expected, whisperResult.text);
-  result.reflection = generateReflection(result, attemptCount);
+  result.description = generateDescription(result, expected, whisperResult.text, storyHint);
+  result.reflection = generateReflection(result, attemptCount, storyHint);
 
   return result;
 }
@@ -557,7 +577,8 @@ export function assessAnswerFallback(
   expected: string,
   acceptableAnswers?: string[],
   questionType?: string,
-  attemptCount: number = 0
+  attemptCount: number = 0,
+  storyHint?: string
 ): AssessmentResult {
   const expectedWords = toWords(expected);
   const spokenWords = toWords(transcript);
@@ -626,10 +647,11 @@ export function assessAnswerFallback(
     hintLevel,
     source: "fallback-local",
     timestamp: Date.now(),
+    spokenText: transcript.trim(),
   };
 
-  result.description = generateDescription(result, expected, transcript);
-  result.reflection = generateReflection(result, attemptCount);
+  result.description = generateDescription(result, expected, transcript, storyHint);
+  result.reflection = generateReflection(result, attemptCount, storyHint);
 
   return result;
 }

@@ -19,11 +19,13 @@ function pick<T>(options: T[]): T {
 /**
  * Generate a natural-language description of what happened.
  * References actual words, sounds, and errors.
+ * storyHint is shown instead of missing-word reveals on early attempts (hintLevel < 2).
  */
 export function generateDescription(
   result: AssessmentResult,
   expected: string,
-  spoken: string
+  spoken: string,
+  storyHint?: string
 ): string {
   const { overallScore, wordResults, contentScore, pronunciationScore } = result;
 
@@ -62,13 +64,19 @@ export function generateDescription(
   );
 
   if (contentScore < 60) {
-    if (missingWords.length > 0) {
-      const missing = missingWords.map((w) => `"${w.word}"`).join(", ");
-      parts.push(`You missed: ${missing}.`);
-    }
-    if (extraWords.length > 0) {
-      const extra = extraWords.map((w) => `"${w.word}"`).join(", ");
-      parts.push(`Extra words: ${extra}.`);
+    if (result.hintLevel >= 2) {
+      // 3rd+ attempt: full reveal of what was missing/extra
+      if (missingWords.length > 0) {
+        const missing = missingWords.map((w) => `"${w.word}"`).join(", ");
+        parts.push(`You missed: ${missing}.`);
+      }
+      if (extraWords.length > 0) {
+        const extra = extraWords.map((w) => `"${w.word}"`).join(", ");
+        parts.push(`Extra words: ${extra}.`);
+      }
+    } else {
+      // 1st or 2nd attempt: no word reveals — nudge toward the story instead
+      parts.push(storyHint ?? "Your answer wasn't quite right — try again!");
     }
   }
 
@@ -99,11 +107,12 @@ export function generateDescription(
  */
 export function generateReflection(
   result: AssessmentResult,
-  attemptCount: number
+  attemptCount: number,
+  storyHint?: string
 ): Reflection {
   return {
     strengths: generateStrengths(result),
-    areasToImprove: generateAreasToImprove(result),
+    areasToImprove: generateAreasToImprove(result, storyHint),
     practiceExercise: generatePracticeExercise(result),
     encouragement: generateEncouragement(result, attemptCount),
   };
@@ -163,16 +172,18 @@ function generateStrengths(result: AssessmentResult): string[] {
 
 // ── Areas to Improve ─────────────────────────────────────────────────
 
-function generateAreasToImprove(result: AssessmentResult): string[] {
+function generateAreasToImprove(result: AssessmentResult, storyHint?: string): string[] {
   const areas: string[] = [];
   const { problemSounds, wordResults, contentScore } = result;
 
-  // Content issues first
+  // Content issues first — gate target-word reveal to hintLevel >= 2 (3rd+ attempt)
   const missingWords = wordResults.filter((w) => w.status === "missing");
   if (missingWords.length > 0 && contentScore < 80) {
-    areas.push(
-      `Make sure to include "${missingWords[0].word}" in your answer`
-    );
+    if (result.hintLevel >= 2) {
+      areas.push(`Make sure to include "${missingWords[0].word}" in your answer`);
+    } else {
+      areas.push(storyHint ? `Think about the story — ${storyHint}` : "Try to say the complete sentence clearly");
+    }
   }
 
   // Pronunciation issues — specific phoneme tips
@@ -200,8 +211,11 @@ function generatePracticeExercise(result: AssessmentResult): string {
   const { problemSounds, wordResults, contentScore } = result;
 
   // If content was wrong, suggest full sentence practice
+  // Only mention "Listen to the correct answer" once the Listen button is available (hintLevel >= 2)
   if (contentScore < 60) {
-    return "Listen to the correct answer, then try saying the whole sentence slowly";
+    return result.hintLevel >= 2
+      ? "Listen to the correct answer, then try saying the whole sentence slowly"
+      : "Try saying the whole sentence again, slowly and clearly";
   }
 
   // If specific phoneme problem, isolate the word
@@ -266,7 +280,7 @@ function generateEncouragement(
     return `Good first try! You scored ${overallScore}% — need 80% to pass. You're close!`;
   }
   return pick([
-    "No worries! Listen to the correct answer and try again.",
-    "Learning takes practice. Listen carefully and give it another go!",
+    "No worries! Take your time and try again.",
+    "Learning takes practice. Think carefully and give it another go!",
   ]);
 }
