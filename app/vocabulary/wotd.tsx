@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
+import { alexSpeak } from "@/lib/alexSpeech";
 
 import { MotiView } from "moti";
 import { GameHeader } from "@/components/ui/GameHeader";
@@ -55,12 +56,9 @@ export default function WordOfTheDayPage() {
       return;
     }
     setSpeaking(true);
-    Speech.speak(todaysWord.word, {
-      language: "en-US",
+    alexSpeak(todaysWord.word, {
       rate: 0.85,
       onDone: () => setSpeaking(false),
-      onStopped: () => setSpeaking(false),
-      onError: () => setSpeaking(false),
     });
   }, [speaking, todaysWord.word]);
 

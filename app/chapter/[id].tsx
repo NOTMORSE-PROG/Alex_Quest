@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Speech from "expo-speech";
+import { alexSpeak } from "@/lib/alexSpeech";
 import * as FileSystem from "expo-file-system/legacy";
 import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
 import { Audio } from "expo-av";
@@ -421,18 +422,17 @@ export default function ChapterPage() {
       // Step 2 (1000ms): rival starts typing
       setTimeout(() => setRivalOpeningTyping(true), 1000);
 
-      // Step 3 (2600ms): rival reaction pops in after ~1.6s of typing
+      // Step 3 (2600ms): rival reaction pops in after ~1.6s of typing + TTS
       setTimeout(() => {
+        const rivalText = result.passed
+          ? (currentQ.rivalReactPass ?? "Okay, you're right.")
+          : (currentQ.rivalReactFail ?? "Ha! Try again.");
         setRivalMessages(prev => [
           ...prev,
-          {
-            role: "rival",
-            text: result.passed
-              ? (currentQ.rivalReactPass ?? "Okay, you're right.")
-              : (currentQ.rivalReactFail ?? "Ha! Try again."),
-          },
+          { role: "rival", text: rivalText },
         ]);
         setRivalOpeningTyping(false);
+        alexSpeak(rivalText, { rate: 0.85 });
       }, 2600);
 
       // Step 4 (3200ms): assessment shows after rival has finished reacting
@@ -522,7 +522,7 @@ export default function ChapterPage() {
       currentQ.type === "build" && currentQ.fullSentenceExpected
         ? currentQ.fullSentenceExpected
         : currentQ.expectedAnswer;
-    Speech.speak(text, { language: "en-US", rate: 0.85 });
+    alexSpeak(text, { rate: 0.85 });
   }, [currentQ]);
 
   // ── Advance to next question or finish chapter ─────────────────────

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView, AnimatePresence } from "moti";
 import * as Speech from "expo-speech";
+import { alexSpeak } from "@/lib/alexSpeech";
 import { type Chapter } from "@/lib/chaptersData";
 import { colors, fonts } from "@/lib/theme";
 
@@ -58,7 +59,7 @@ export function ChapterIntroScene({ chapter, onStart, rivalLine, rivalEmoji }: P
     timersRef.current.push(setTimeout(() => {
       setRivalPhase(4);                                                  // bubble + TTS
       if (rivalLine) {
-        Speech.speak(rivalLine, { language: "en-US", rate: 0.80 });
+        alexSpeak(rivalLine, { rate: 0.80 });
       }
     }, 3600));                                                           // 1.6s of typing dots
     timersRef.current.push(setTimeout(() => {
@@ -78,7 +79,7 @@ export function ChapterIntroScene({ chapter, onStart, rivalLine, rivalEmoji }: P
     const next = !showContinuation;
     setShowContinuation(next);
     if (next) {
-      Speech.speak(chapter.story.continuation, { language: "en-US", rate: 0.85 });
+      alexSpeak(chapter.story.continuation, { rate: 0.85 });
     } else {
       Speech.stop();
     }

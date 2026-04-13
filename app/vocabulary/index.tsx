@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Speech from "expo-speech";
+import { alexSpeak } from "@/lib/alexSpeech";
 import { MotiView } from "moti";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { GameHeader } from "@/components/ui/GameHeader";
@@ -24,12 +25,9 @@ export default function VocabularyPage() {
         return;
       }
       setSpeakingWord(word);
-      Speech.speak(word, {
-        language: "en-US",
+      alexSpeak(word, {
         rate: 0.85,
         onDone: () => setSpeakingWord(null),
-        onStopped: () => setSpeakingWord(null),
-        onError: () => setSpeakingWord(null),
       });
     },
     [speakingWord]

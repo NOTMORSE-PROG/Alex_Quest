@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MotiView } from "moti";
 import * as Speech from "expo-speech";
+import { alexSpeak } from "@/lib/alexSpeech";
 import { colors, fonts, shadows } from "@/lib/theme";
 
 interface StoryContext {
@@ -35,10 +36,13 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
   const [isSpeaking, setIsSpeaking] = useState(false);
   const insets = useSafeAreaInsets();
 
-  // When the parent starts recording it calls Speech.stop() externally —
-  // sync isSpeaking so the button goes back to 👂 instead of staying ⏹️
+  // Stop any in-progress TTS the moment recording begins so the mic doesn't
+  // pick up Alex's voice, and reset the button back to 👂.
   useEffect(() => {
-    if (isRecording) setIsSpeaking(false);
+    if (isRecording) {
+      Speech.stop();
+      setIsSpeaking(false);
+    }
   }, [isRecording]);
 
   const handleListen = async () => {
@@ -50,11 +54,9 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
     }
     const text = listenText ?? targetSentence ?? question;
     setIsSpeaking(true);
-    Speech.speak(text, {
-      language: "en-US",
+    alexSpeak(text, {
       rate: 0.85,
       onDone: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
     });
   };
 

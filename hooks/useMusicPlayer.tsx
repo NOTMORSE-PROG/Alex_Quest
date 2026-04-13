@@ -72,14 +72,17 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+      // Read muted at call-time (not from closure) so we get the fully-hydrated
+      // value even when Zustand finishes loading from AsyncStorage after mount.
+      const isMuted = useGameStore.getState().muted;
       const { sound } = await Audio.Sound.createAsync(
         MUSIC_ASSETS[track],
-        { isLooping: true, volume: 0.3, shouldPlay: !muted }
+        { isLooping: true, volume: 0.3, shouldPlay: !isMuted }
       );
       soundRef.current = sound;
       currentTrack.current = track;
     } catch { /* non-critical */ }
-  }, [muted]);
+  }, []);
 
   const pauseTrack = useCallback(async () => {
     if (!soundRef.current) return;

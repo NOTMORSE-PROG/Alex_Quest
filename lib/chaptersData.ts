@@ -314,7 +314,7 @@ export const chapters: Chapter[] = [
       {
         id: 5,
         type: "speak",
-        prompt: "Say two sentences using correct verbs.",
+        prompt: "Say two sentences about the story, using the correct verb.",
         directions: "Tap the microphone and speak two complete sentences.",
         expectedAnswer: "The squirrel is worried. It takes the nut.",
         acceptableAnswers: [

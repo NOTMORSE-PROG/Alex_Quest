@@ -58,6 +58,7 @@ export function useAudio() {
   }, [playSFX]);
 
   const playPronunciation = useCallback(async (uri: string) => {
+    if (muted) return;
     try {
       const { sound } = await Audio.Sound.createAsync({ uri });
       await sound.playAsync();
@@ -69,7 +70,7 @@ export function useAudio() {
     } catch {
       // non-critical — silently fail
     }
-  }, []);
+  }, [muted]);
 
   return { playSFX, playCompliment, playPronunciation };
 }

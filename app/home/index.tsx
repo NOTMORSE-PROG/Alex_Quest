@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import * as Speech from "expo-speech";
+import { alexSpeak, alexStop } from "@/lib/alexSpeech";
 import { MotiView } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { HomeBackground } from "@/components/home/HomeBackground";
@@ -41,9 +41,9 @@ export default function HomePage() {
   const handleAlexTap = () => {
     const phrase = tap();
     if (!phrase) return; // debounced — ignore rapid taps
-    Speech.stop();
+    alexStop();
     playSFX("tap");
-    Speech.speak(phrase, { language: "en-US", rate: 0.9 });
+    alexSpeak(phrase, { rate: 0.9 });
   };
   const handleQuestClick = () => {
     playSFX("click");
