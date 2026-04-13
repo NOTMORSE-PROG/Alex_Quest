@@ -132,6 +132,10 @@ export default function ChapterPage() {
     setRivalOpeningTyping(false);
     setRivalPromptVisible(false);
 
+    // TTS the rival's opening line so the student hears it in the chat
+    console.log(`${TAG} rival TTS opening: "${currentQ.rivalLine}"`);
+    alexSpeak(currentQ.rivalLine, { rate: 0.80 });
+
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     // Show the centre prompt popup shortly after the question loads
@@ -423,7 +427,7 @@ export default function ChapterPage() {
       setTimeout(() => setRivalOpeningTyping(true), 1000);
 
       // Step 3 (2600ms): rival reaction pops in after ~1.6s of typing + TTS
-      setTimeout(() => {
+      setTimeout(async () => {
         const rivalText = result.passed
           ? (currentQ.rivalReactPass ?? "Okay, you're right.")
           : (currentQ.rivalReactFail ?? "Ha! Try again.");
@@ -432,6 +436,17 @@ export default function ChapterPage() {
           { role: "rival", text: rivalText },
         ]);
         setRivalOpeningTyping(false);
+
+        // TTS the rival's reaction line
+        console.log(`${TAG} rival TTS reaction: "${rivalText}"`);
+        // Reset audio mode to playback so TTS isn't suppressed by the
+        // recording session that just ended (Android AudioManager conflict).
+        try {
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+          });
+        } catch { /* non-critical */ }
         alexSpeak(rivalText, { rate: 0.85 });
       }, 2600);
 

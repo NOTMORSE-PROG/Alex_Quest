@@ -58,14 +58,24 @@ export interface AlexSpeakOptions {
  * Silently no-ops when the user has muted sound.
  */
 export function alexSpeak(text: string, opts: AlexSpeakOptions = {}) {
-  if (useGameStore.getState().muted) return;
+  if (useGameStore.getState().muted) {
+    console.log("[alexSpeak] muted — skipping TTS");
+    return;
+  }
   const { rate = 0.85, onDone } = opts;
   const voice = _cachedVoice; // best-effort; if not resolved yet, falls back to default
+  console.log(`[alexSpeak] speaking: "${text.slice(0, 40)}…" voice=${voice ?? "default"} rate=${rate}`);
   Speech.speak(text, {
     language: "en-US",
     rate,
     ...(voice ? { voice } : {}),
-    ...(onDone ? { onDone } : {}),
+    onDone: () => {
+      console.log("[alexSpeak] done");
+      onDone?.();
+    },
+    onError: (err: unknown) => {
+      console.warn("[alexSpeak] TTS error:", err);
+    },
   });
 }
 

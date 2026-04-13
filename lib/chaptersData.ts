@@ -587,7 +587,7 @@ export const chapters: Chapter[] = [
       {
         id: 4,
         type: "speak",
-        prompt: "Say two sentences about the scene using correct word forms.",
+        prompt: "Say two sentences about the story, using the correct word forms.",
         directions: "Tap the microphone and speak two full sentences.",
         expectedAnswer: "Alex is a brave bird. He helps the owl.",
         acceptableAnswers: [
