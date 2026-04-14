@@ -11,6 +11,7 @@ import { MotiView, AnimatePresence } from "moti";
 import { AlexCharacter } from "@/components/AlexCharacter";
 import { ConfettiBlast } from "@/components/animations/ConfettiBlast";
 import { useAudio } from "@/hooks/useAudio";
+import { useGameStore } from "@/store/gameStore";
 import { colors, fonts } from "@/lib/theme";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -40,6 +41,7 @@ const STORY_LINES = [
 export default function ReunionScreen() {
   const router = useRouter();
   const { playSFX } = useAudio();
+  const setReunionWatched = useGameStore((s) => s.setReunionWatched);
 
   const [storyLine, setStoryLine]         = useState<number | null>(null);
   const [showMother, setShowMother]       = useState(false);
@@ -49,7 +51,10 @@ export default function ReunionScreen() {
   const [showConfetti, setShowConfetti]   = useState(false);
   const [showEndCard, setShowEndCard]     = useState(false);
 
-  const navigateToMap = () => router.replace("/map");
+  const navigateToMap = () => {
+    setReunionWatched();
+    router.replace("/certificate");
+  };
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [

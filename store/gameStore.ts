@@ -85,9 +85,15 @@ export interface GameState {
   // null = default City scene (before any quest is accepted).
   homeLocationChapterId: ChapterId | null;
 
+  // Certificate of Completion
+  certName: string | null;
+  reunionWatched: boolean;
+
   // Actions
   setCurrentChapter: (id: ChapterId) => void;
   setHomeLocation: (id: ChapterId) => void;
+  setCertName: (name: string) => void;
+  setReunionWatched: () => void;
   completeChapter: (id: ChapterId) => void;
   completeTutorial: () => void;
   watchIntro: () => void;
@@ -140,9 +146,13 @@ export const useGameStore = create<GameState>()(
       earnedBadges: [],
       pendingBadgeNotifications: [],
       homeLocationChapterId: null,
+      certName: null,
+      reunionWatched: false,
 
       setCurrentChapter: (id) => set({ currentChapter: id }),
       setHomeLocation: (id) => set({ homeLocationChapterId: id }),
+      setCertName: (name) => set({ certName: name }),
+      setReunionWatched: () => set({ reunionWatched: true }),
 
       completeChapter: (id) => {
         set((state) => ({
@@ -308,11 +318,13 @@ export const useGameStore = create<GameState>()(
           earnedBadges: [],
           pendingBadgeNotifications: [],
           homeLocationChapterId: null,
+          certName: null,
+          reunionWatched: false,
         }),
     }),
     {
       name: "alexs-quest-save",
-      version: 9,
+      version: 10,
       storage: createJSONStorage(() => debouncedStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
@@ -367,6 +379,10 @@ export const useGameStore = create<GameState>()(
         }
         if (version < 9) {
           if (state.homeLocationChapterId === undefined) state.homeLocationChapterId = null;
+        }
+        if (version < 10) {
+          if (state.certName === undefined) state.certName = null;
+          if (state.reunionWatched === undefined) state.reunionWatched = false;
         }
         return state as unknown as GameState;
       },

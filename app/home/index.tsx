@@ -22,6 +22,10 @@ export default function HomePage() {
   const questStarted = useGameStore((s) => s.questStarted);
   const homeLocationChapterId = useGameStore((s) => s.homeLocationChapterId);
   const updateStreak = useGameStore((s) => s.updateStreak);
+  const chapterProgress = useGameStore((s) => s.chapterProgress);
+  const reunionWatched = useGameStore((s) => s.reunionWatched);
+
+  const showCertButton = reunionWatched || chapterProgress[5].completed;
 
   useEffect(() => {
     updateStreak();
@@ -48,6 +52,10 @@ export default function HomePage() {
   const handleQuestClick = () => {
     playSFX("click");
     router.push(questStarted ? "/map" : "/quest");
+  };
+  const handleCertClick = () => {
+    playSFX("click");
+    router.push("/certificate");
   };
 
   return (
@@ -138,6 +146,24 @@ export default function HomePage() {
         </Pressable>
       </MotiView>
 
+      {/* My Certificate — visible after reunion/chapter 5 complete */}
+      {showCertButton && (
+        <MotiView
+          from={{ translateX: -80, opacity: 0 }}
+          animate={{ translateX: 0, opacity: 1 }}
+          transition={{ delay: 800, type: "spring", stiffness: 200, damping: 20 }}
+          style={styles.certBtn}
+        >
+          <Pressable onPress={handleCertClick} style={styles.certBtnInner}>
+            <Text style={{ fontSize: 22 }}>🏆</Text>
+            <View>
+              <Text style={styles.certBtnLabel}>My</Text>
+              <Text style={styles.certBtnLabel}>Cert</Text>
+            </View>
+          </Pressable>
+        </MotiView>
+      )}
+
       <BottomNav />
     </View>
   );
@@ -188,4 +214,23 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   vocabBtnLabel: { fontFamily: fonts.display, color: colors.navy, fontSize: 12 },
+
+  // My Certificate pill (mirrors vocabBtn but gold, top-left)
+  certBtn: { position: "absolute", top: 100, left: 16, zIndex: 20 },
+  certBtnInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(245,166,35,0.92)",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  certBtnLabel: { fontFamily: fonts.display, color: "white", fontSize: 12 },
+
 });
