@@ -24,6 +24,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { useMusicPlayer } from "@/hooks/useMusicPlayer";
 import { loadDictionary } from "@/lib/cmuDictionary";
 import { assessAnswer, buildSimpleResult } from "@/lib/assessmentEngine";
+import { getBlankWords, isBlankWordMatch } from "@/lib/grammarCheck";
 import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { useWhisper } from "@/hooks/useWhisper";
 import { colors, fonts } from "@/lib/theme";
@@ -412,6 +413,51 @@ export default function ChapterPage() {
         setRecordingUri(audioUri); // use temp uri as fallback
       }
       cleanupAudioFile(audioUri);
+    }
+
+    // ── Grammar gate (build type only) ────────────────────────────────
+    // For fill-in-the-blank questions the blank word is the grammar target.
+    // The normal fuzzy scorer allows 1-char edit distance, so "fells" ≈ "falls"
+    // and the student would pass even with the wrong verb form. We re-check the
+    // blank word(s) strictly (exact + suffix inflections only, no edit distance).
+    // Non-blank words (subject nouns, etc.) remain fuzzy — a student who says
+    // "The skink is collecting food" still passes because the blank "is" is right.
+    if (
+      currentQ.type === "build" &&
+      currentQ.blank &&
+      currentQ.fullSentenceExpected &&
+      result.passed
+    ) {
+      const blankWords = getBlankWords(currentQ.blank, currentQ.fullSentenceExpected);
+      const spokenTokens = (result.spokenText ?? "")
+        .toLowerCase()
+        .replace(/[.,!?'"]/g, "")
+        .split(/\s+/);
+
+      // Check primary blank words
+      let grammarPassed = blankWords.every((exp) =>
+        spokenTokens.some((sp) => isBlankWordMatch(sp, exp))
+      );
+
+      // Also accept if any acceptable alternative's blank word matches
+      if (!grammarPassed && currentQ.acceptableAnswers) {
+        for (const alt of currentQ.acceptableAnswers) {
+          const altBlankWords = getBlankWords(currentQ.blank, alt);
+          if (altBlankWords.every((exp) => spokenTokens.some((sp) => isBlankWordMatch(sp, exp)))) {
+            grammarPassed = true;
+            break;
+          }
+        }
+      }
+
+      if (!grammarPassed) {
+        result = {
+          ...result,
+          passed: false,
+          contentFeedback: "Check your grammar — make sure you use the correct word form!",
+        };
+        console.log(`${TAG} grammar gate blocked — spoken="${result.spokenText}" blank="${currentQ.blank}"`);
+      }
     }
 
     saveQuestionScore(chapterId, currentQ.id, result);

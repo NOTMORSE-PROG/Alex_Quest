@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import { colors, fonts } from "@/lib/theme";
-import { useGameStore } from "@/store/gameStore";
+import { useGameStore, type ChapterId } from "@/store/gameStore";
 import { badges } from "@/lib/badgesData";
+import { getChapter } from "@/lib/chaptersData";
 import { BadgeCard } from "@/components/ui/BadgeCard";
 import { GameHeader } from "@/components/ui/GameHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
@@ -21,6 +22,8 @@ const TABS: { key: FilterTab; label: string }[] = [
 
 export default function BadgesPage() {
   const earnedBadges = useGameStore((s) => s.earnedBadges);
+  const questionScores = useGameStore((s) => s.questionScores);
+  const chapterProgress = useGameStore((s) => s.chapterProgress);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
   const earnedMap = useMemo(
@@ -39,16 +42,30 @@ export default function BadgesPage() {
   const earnedCount = earnedBadges.length;
   const totalCount = badges.length;
 
-  return (
-    <View style={styles.screen}>
-      <GameHeader transparent />
+  const chapterProgressData = useMemo(
+    () =>
+      ([1, 2, 3, 4, 5] as ChapterId[]).map((id) => {
+        const chapter = getChapter(id);
+        const total = chapter?.questions.length ?? 0;
+        const done =
+          chapter?.questions.filter(
+            (q) => questionScores[`${id}-${q.id}`] !== undefined
+          ).length ?? 0;
+        return {
+          id,
+          title: chapter?.title ?? `Chapter ${id}`,
+          emoji: chapter?.animalEmoji ?? "⭐",
+          percentage: total > 0 ? Math.round((done / total) * 100) : 0,
+          completed: chapterProgress[id]?.completed ?? false,
+        };
+      }),
+    [questionScores, chapterProgress]
+  );
 
-      <MotiView
-        from={{ opacity: 0, translateY: 10 }}
-        animate={{ opacity: 1, translateY: 0 }}
-        transition={{ type: "timing", duration: 400 }}
-        style={styles.progressContainer}
-      >
+  const listHeader = (
+    <>
+      {/* Overall badge counter */}
+      <View style={styles.progressContainer}>
         <Text style={styles.progressText}>
           {earnedCount} / {totalCount} Badges Earned
         </Text>
@@ -59,8 +76,38 @@ export default function BadgesPage() {
             style={styles.progressBarFill}
           />
         </View>
-      </MotiView>
+      </View>
 
+      {/* Chapter Progress */}
+      <View style={styles.chapterProgressContainer}>
+        <Text style={styles.chapterProgressTitle}>Chapter Progress</Text>
+        {chapterProgressData.map((ch) => (
+          <View key={ch.id} style={styles.chapterRow}>
+            <Text style={styles.chapterEmoji}>{ch.emoji}</Text>
+            <View style={styles.chapterInfo}>
+              <View style={styles.chapterLabelRow}>
+                <Text style={styles.chapterName} numberOfLines={1}>{ch.title}</Text>
+                {ch.completed && <Text style={styles.chapterDone}> ✓</Text>}
+              </View>
+              <View style={styles.chapterBarBg}>
+                <MotiView
+                  animate={{ width: `${ch.percentage}%` as any }}
+                  transition={{ type: "spring", stiffness: 100, damping: 15 }}
+                  style={[
+                    styles.chapterBarFill,
+                    ch.completed && styles.chapterBarComplete,
+                  ]}
+                />
+              </View>
+            </View>
+            <Text style={[styles.chapterPct, ch.completed && styles.chapterPctComplete]}>
+              {ch.percentage}%
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Tab filters */}
       <View style={styles.tabsWrapper}>
         <ScrollView
           horizontal
@@ -83,11 +130,18 @@ export default function BadgesPage() {
           })}
         </ScrollView>
       </View>
+    </>
+  );
+
+  return (
+    <View style={styles.screen}>
+      <GameHeader transparent />
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
         numColumns={2}
+        ListHeaderComponent={listHeader}
         contentContainerStyle={styles.grid}
         renderItem={({ item, index }) => (
           <MotiView
@@ -172,7 +226,7 @@ const styles = StyleSheet.create({
   grid: {
     paddingHorizontal: 10,
     paddingTop: 8,
-    paddingBottom: 100,
+    paddingBottom: 160,
   },
   gridItem: {
     flex: 1,
@@ -184,5 +238,74 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.4)",
     textAlign: "center",
     marginTop: 40,
+  },
+  chapterProgressContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+  },
+  chapterProgressTitle: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: "rgba(255,255,255,0.5)",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  chapterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  chapterEmoji: {
+    fontSize: 20,
+    width: 28,
+    textAlign: "center",
+  },
+  chapterInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  chapterLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  chapterName: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: "rgba(255,255,255,0.85)",
+    flexShrink: 1,
+  },
+  chapterDone: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: colors.gold,
+  },
+  chapterBarBg: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+  },
+  chapterBarFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: colors.sky,
+  },
+  chapterBarComplete: {
+    backgroundColor: colors.gold,
+  },
+  chapterPct: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: "rgba(255,255,255,0.5)",
+    width: 36,
+    textAlign: "right",
+  },
+  chapterPctComplete: {
+    color: colors.gold,
   },
 });

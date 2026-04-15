@@ -85,6 +85,47 @@ export function checkYesNo(input: string, expected: "Yes" | "No"): boolean {
 }
 
 /**
+ * Extract the word(s) that fill the blank in a build-type question.
+ * Compares the blank template against the full sentence to isolate
+ * only the words that replace "___".
+ *
+ * e.g. blank="The skunk ___ collecting food.", full="The skunk is collecting food"
+ * → ["is"]
+ *
+ * e.g. blank="It ___ back inside.", full="It falls back inside"
+ * → ["falls"]
+ */
+export function getBlankWords(blank: string, fullSentence: string): string[] {
+  const normFull = fullSentence.toLowerCase().replace(/[.,!?'"]/g, "").trim();
+  const parts = blank.split("___").map((p) =>
+    p.toLowerCase().replace(/[.,!?'"]/g, "").trim()
+  );
+  let remaining = normFull;
+  for (const part of parts) {
+    if (part) remaining = remaining.replace(part, "").trim();
+  }
+  return remaining.split(/\s+/).filter((w) => w.length > 0);
+}
+
+/**
+ * Strict blank-word match: accepts exact match or common suffix inflections
+ * (-s, -es, -ing, -ed) but deliberately excludes edit-distance tolerance.
+ *
+ * This lets "falls" match "fall" (inflection) but NOT "fells" (wrong verb).
+ * Pronunciation errors on non-blank words are handled by the normal fuzzy
+ * content scorer — this function is only for the blank word itself.
+ */
+export function isBlankWordMatch(spoken: string, expected: string): boolean {
+  if (spoken === expected) return true;
+  if (spoken.length >= 2 && expected.length >= 2) {
+    for (const suffix of ["s", "es", "ing", "ed"]) {
+      if (spoken + suffix === expected || expected + suffix === spoken) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Calculate star rating based on XP earned vs total possible.
  */
 export function calculateStars(earnedXP: number, totalXP: number): number {

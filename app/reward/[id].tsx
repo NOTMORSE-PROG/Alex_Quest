@@ -34,6 +34,9 @@ export default function RewardPage() {
     const avgPronunciation = Math.round(
       scores.reduce((s, r) => s + r.pronunciationScore, 0) / scores.length
     );
+    const avgContent = Math.round(
+      scores.reduce((s, r) => s + r.contentScore, 0) / scores.length
+    );
     const avgOverall = Math.round(
       scores.reduce((s, r) => s + r.overallScore, 0) / scores.length
     );
@@ -57,7 +60,7 @@ export default function RewardPage() {
       else if (avg < 60) needsPractice.push(phoneme);
     }
 
-    return { avgPronunciation, avgOverall, mastered, needsPractice, totalQuestions: scores.length };
+    return { avgPronunciation, avgContent, avgOverall, mastered, needsPractice, totalQuestions: scores.length };
   }, [questionScores, chapterId]);
 
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function RewardPage() {
           <Text style={styles.storyText}>{chapter.story.reward}</Text>
         </MotiView>
 
-        {/* Pronunciation Summary */}
+        {/* Results Summary */}
         {chapterStats && (
           <MotiView
             from={{ opacity: 0, translateY: 20 }}
@@ -117,13 +120,23 @@ export default function RewardPage() {
             transition={{ delay: 1300, type: "spring" }}
             style={styles.pronSummary}
           >
-            <Text style={styles.pronTitle}>Your Pronunciation</Text>
-            <View style={styles.pronScoreRow}>
-              <Text style={styles.pronScore}>
-                {getScoreTier(chapterStats.avgPronunciation).emoji}{" "}
-                {chapterStats.avgPronunciation}%
-              </Text>
-              <Text style={styles.pronLabel}>avg pronunciation</Text>
+            <Text style={styles.pronTitle}>Your Results</Text>
+            <View style={styles.scoresRow}>
+              <View style={styles.scoreColumn}>
+                <Text style={styles.pronScore}>
+                  {getScoreTier(chapterStats.avgPronunciation).emoji}{" "}
+                  {chapterStats.avgPronunciation}%
+                </Text>
+                <Text style={styles.pronLabel}>pronunciation</Text>
+              </View>
+              <View style={styles.scoreDivider} />
+              <View style={styles.scoreColumn}>
+                <Text style={styles.pronScore}>
+                  {getScoreTier(chapterStats.avgContent).emoji}{" "}
+                  {chapterStats.avgContent}%
+                </Text>
+                <Text style={styles.pronLabel}>grammar</Text>
+              </View>
             </View>
 
             {chapterStats.mastered.length > 0 && (
@@ -204,6 +217,9 @@ const styles = StyleSheet.create({
   pronSummary: { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 16, padding: 16, width: "100%", maxWidth: 340, gap: 10 },
   pronTitle: { fontFamily: fonts.body, fontSize: 16, color: "white", textAlign: "center" },
   pronScoreRow: { alignItems: "center", gap: 2 },
+  scoresRow: { flexDirection: "row", justifyContent: "space-around", alignItems: "center" },
+  scoreColumn: { alignItems: "center", gap: 2, flex: 1 },
+  scoreDivider: { width: 1, height: 40, backgroundColor: "rgba(255,255,255,0.15)" },
   pronScore: { fontFamily: fonts.display, fontSize: 24, color: colors.gold },
   pronLabel: { fontFamily: fonts.bodyRegular, fontSize: 12, color: "rgba(255,255,255,0.6)" },
   phonemeSection: { gap: 6 },

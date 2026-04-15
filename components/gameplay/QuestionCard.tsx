@@ -94,7 +94,7 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
               <Text key={i}>
                 {part}
                 {i < arr.length - 1 && (
-                  <Text style={styles.blankHighlight}> _____ </Text>
+                  <Text style={styles.blankHighlight}>  ___  </Text>
                 )}
               </Text>
             ))}
