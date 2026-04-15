@@ -94,7 +94,7 @@ export function QuestionCard({ question, directions, hint, questionNumber, total
               <Text key={i}>
                 {part}
                 {i < arr.length - 1 && (
-                  <Text style={styles.blankHighlight}>  ___  </Text>
+                  <Text style={styles.blankHighlight}>{"\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"}</Text>
                 )}
               </Text>
             ))}
@@ -272,6 +272,7 @@ const styles = StyleSheet.create({
     color: colors.sky,
     fontFamily: fonts.display,
     fontSize: 18,
+    textDecorationLine: "underline",
   },
   optionsList: {
     width: "100%",
