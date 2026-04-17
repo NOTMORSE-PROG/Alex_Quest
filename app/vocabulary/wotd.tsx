@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
+import * as FileSystem from "expo-file-system";
+import { Audio } from "expo-av";
 import { alexSpeak } from "@/lib/alexSpeech";
 
 import { MotiView } from "moti";
@@ -19,7 +22,7 @@ import { ScoreBars } from "@/components/gameplay/ScoreBars";
 import { PhonemeBreakdown } from "@/components/gameplay/PhonemeBreakdown";
 import { ProblemSounds } from "@/components/gameplay/ProblemSounds";
 import { useWhisper } from "@/hooks/useWhisper";
-import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { useAudioRecorder, cleanupAudioFile } from "@/hooks/useAudioRecorder";
 import { assessAnswer } from "@/lib/assessmentEngine";
 import { getTodaysWord, getTodaysWordIndex, todayKey, WORD_OF_THE_DAY_BANK } from "@/lib/wordOfTheDay";
 import { useGameStore } from "@/store/gameStore";
@@ -27,6 +30,9 @@ import { colors, fonts } from "@/lib/theme";
 import type { AssessmentResult } from "@/types/assessment";
 
 const ACCENT = colors.gold;
+const TAG = "[wotd]";
+const WHISPER_TIMEOUT_MS = 120_000;
+const STILL_THINKING_DELAY_MS = 15_000;
 
 type RecordPhase = "idle" | "recording" | "assessing";
 
@@ -48,6 +54,7 @@ export default function WordOfTheDayPage() {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [noSpeech, setNoSpeech] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [stillThinking, setStillThinking] = useState(false);
 
   const handleSpeak = useCallback(() => {
     if (speaking) {
@@ -66,44 +73,96 @@ export default function WordOfTheDayPage() {
     if (phase === "idle") {
       setNoSpeech(false);
       try {
-        // Audio mode setup + OEM timing delay is handled inside useAudioRecorder.startRecording()
+        // Stop any active TTS before recording. On Huawei/OEM devices the TTS
+        // audio session suppresses the mic if it's still active when
+        // MediaRecorder starts, causing silent recordings. The 150ms delay
+        // lets EMUI/MIUI release TTS audio focus before we open the mic.
+        await Speech.stop();
+        setSpeaking(false);
+        await new Promise((r) => setTimeout(r, 150));
         await recorder.startRecording();
         setPhase("recording");
-      } catch {
+      } catch (e) {
+        console.warn(`${TAG} startRecording failed:`, e);
         // permission denied or recorder unavailable — stay idle
       }
-    } else if (phase === "recording") {
-      const uri = await recorder.stopRecording();
-      if (!uri) {
-        setPhase("idle");
-        return;
-      }
-      setPhase("assessing");
+      return;
+    }
 
-      // Guard: Whisper must be ready before attempting transcription
-      if (!whisper.isReady) {
-        console.warn("[wotd] whisper not ready — aborting");
-        setNoSpeech(true);
-        setPhase("idle");
-        return;
-      }
+    if (phase !== "recording") return;
 
-      // 15-second timeout to prevent hangs on slow devices
+    const uri = await recorder.stopRecording();
+    if (!uri) {
+      setPhase("idle");
+      return;
+    }
+    setPhase("assessing");
+
+    // ── File-size guard: under 8KB can't contain real speech. Mark the
+    // current recording profile failed so the next attempt falls through to
+    // a different codec (16k-mono → m4a-44k-mono → m4a-44k-stereo → HIGH).
+    let capturedFileSize: number | null = null;
+    try {
+      const info = await FileSystem.getInfoAsync(uri);
+      if (info.exists && "size" in info && typeof info.size === "number") {
+        capturedFileSize = info.size;
+        if (info.size < 8_000) {
+          console.warn(`${TAG} audio file too small (${info.size}B) profile=${recorder.profileUsed} — marking profile failed`);
+          recorder.markProfileFailed();
+          setNoSpeech(true);
+          cleanupAudioFile(uri);
+          setPhase("idle");
+          return;
+        }
+      }
+    } catch {
+      /* non-critical — proceed to assess */
+    }
+
+    // Guard: Whisper must be ready before attempting transcription.
+    if (!whisper.isReady) {
+      console.warn(`${TAG} whisper not ready (error=${whisper.error ?? "loading"}) — aborting`);
+      setNoSpeech(true);
+      cleanupAudioFile(uri);
+      setPhase("idle");
+      return;
+    }
+
+    // ── Transcribe with the chapter's low-end-device settings:
+    //   - 120s timeout: Kirin 710A measured at ~60s for a 3-4s clip.
+    //   - permissive: true: loosens noSpeech/logprob thresholds for short
+    //     single-word utterances that strict mode rejects as silence.
+    //   - prompt=expected word: biases decoding toward the target (e.g.
+    //     helps Whisper pick "zero" over "hero").
+    // A 15s "Still thinking…" affordance reassures users on slow devices.
+    const thinkingTimer = setTimeout(() => setStillThinking(true), STILL_THINKING_DELAY_MS);
+    const transcribeStartMs = Date.now();
+
+    try {
       const whisperResult = await Promise.race([
-        whisper.transcribe(uri),
+        whisper.transcribe(uri, { permissive: true, prompt: todaysWord.word }),
         new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error("wotd transcription timed out")), 15_000)
+          setTimeout(() => reject(new Error("wotd transcription timed out")), WHISPER_TIMEOUT_MS)
         ),
       ]).catch((err: unknown) => {
-        console.warn("[wotd] transcription error:", err);
+        console.warn(`${TAG} transcription error:`, err);
         return null;
       });
 
-      if (!whisperResult) {
+      console.log(
+        `${TAG} transcript="${whisperResult?.text ?? ""}" elapsed=${Date.now() - transcribeStartMs}ms ` +
+          `fileSize=${capturedFileSize ?? "?"} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`
+      );
+
+      if (!whisperResult || !whisperResult.text.trim()) {
+        console.warn(
+          `${TAG} Whisper returned empty — fileSize=${capturedFileSize ?? "?"} profile=${recorder.profileUsed} peakDb=${recorder.peakDb}`
+        );
         setNoSpeech(true);
-        setPhase("idle");
+        cleanupAudioFile(uri);
         return;
       }
+
       const assessment = assessAnswer(
         whisperResult,
         todaysWord.word,
@@ -113,7 +172,25 @@ export default function WordOfTheDayPage() {
       );
       saveWotdScore(dateKey, assessment.overallScore);
       setResult(assessment);
+      cleanupAudioFile(uri);
+    } catch (e) {
+      console.error(`${TAG} assessment threw:`, e);
+      setNoSpeech(true);
+      cleanupAudioFile(uri);
+    } finally {
+      clearTimeout(thinkingTimer);
+      setStillThinking(false);
       setPhase("idle");
+      // Reset audio session to playback so the 🔉 button and any subsequent
+      // TTS aren't silenced by a lingering recording mode on Android.
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+      } catch {
+        /* non-critical */
+      }
     }
   }, [phase, recorder, whisper, todaysWord.word, saveWotdScore, dateKey]);
 
@@ -220,9 +297,18 @@ export default function WordOfTheDayPage() {
           {!result && (
             <View style={styles.recordingArea}>
               {noSpeech && (
-                <Text style={styles.noSpeechText}>
-                  No speech detected — try again.
-                </Text>
+                <>
+                  <Text style={styles.noSpeechText}>
+                    No speech detected — try again.
+                  </Text>
+                  {Platform.OS === "android" && recorder.peakDb < -50 && (
+                    <Text style={styles.noSpeechHint}>
+                      Tip: Swipe down from the top of your screen. If you see
+                      a microphone icon with a line through it, tap it to
+                      unmute your microphone.
+                    </Text>
+                  )}
+                </>
               )}
 
               {!whisper.isReady && whisper.isLoading ? (
@@ -256,7 +342,7 @@ export default function WordOfTheDayPage() {
                     {phase === "recording"
                       ? "Tap to stop"
                       : phase === "assessing"
-                      ? "Assessing…"
+                      ? (stillThinking ? "Still thinking…" : "Assessing…")
                       : practicedToday
                       ? "Try again"
                       : "Tap to record"}
@@ -472,6 +558,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyRegular,
     fontSize: 13,
     color: colors.warning,
+  },
+  noSpeechHint: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 11,
+    color: `${colors.warning}99`,
+    textAlign: "center",
+    marginTop: 4,
+    paddingHorizontal: 12,
   },
   loadingRow: {
     flexDirection: "row",
