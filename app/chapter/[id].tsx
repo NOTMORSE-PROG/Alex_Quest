@@ -344,10 +344,17 @@ export default function ChapterPage() {
         const exp = expected.toLowerCase().trim();
         // Use whole-word regex — "know" contains "no" as a substring so
         // .includes("no") gives false positives.
+        // Strip punctuation + collapse whitespace so "It is not a full sentence."
+        // matches "it is not a full sentence" regardless of Whisper's punctuation.
+        const stripPunct = (s: string) =>
+          s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+        const spokenNorm = stripPunct(spoken);
+        const acceptableNorm = (currentQ.acceptableAnswers ?? []).map(stripPunct).filter(Boolean);
         const passed =
           (/\byes\b/i.test(spoken) && exp === "yes") ||
           (/\bno\b/i.test(spoken) && exp === "no") ||
-          spoken === exp;
+          spoken === exp ||
+          acceptableNorm.some((a) => spokenNorm === a || spokenNorm.includes(a));
         result = buildSimpleResult(passed, transcript, expected);
         console.log(`${TAG} identify result — passed=${passed}`);
       }

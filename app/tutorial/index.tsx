@@ -43,23 +43,26 @@ export default function TutorialPage() {
   const [step, setStep] = useState(0);
   const { completeTutorial } = useGameStore();
 
-  const isLast = step === STEPS.length - 1;
-  const current = STEPS[step];
+  const safeStep = Math.min(step, STEPS.length - 1);
+  const isLast = safeStep === STEPS.length - 1;
+  const current = STEPS[safeStep];
 
   // Request mic permission when the user reaches the "Speak to Learn" slide
   useEffect(() => {
-    if (step === 1) {
+    if (safeStep === 1) {
       ExpoSpeechRecognitionModule.requestPermissionsAsync().catch(() => {});
     }
-  }, [step]);
+  }, [safeStep]);
 
   const handleNext = () => {
-    if (isLast) {
-      completeTutorial();
-      router.replace("/home");
-    } else {
-      setStep((s) => s + 1);
-    }
+    setStep((s) => {
+      if (s >= STEPS.length - 1) {
+        completeTutorial();
+        router.replace("/home");
+        return s;
+      }
+      return s + 1;
+    });
   };
 
   return (
