@@ -34,7 +34,7 @@ export const ProblemSounds = memo(function ProblemSounds({ problemSounds }: Prop
               You said{" "}
               <Text style={styles.highlight}>/{ps.soundMostLike}/</Text>
               {" "}in{" "}
-              <Text style={styles.highlight}>{ps.word}</Text>
+              <Text style={styles.highlight}>{ps.actualWord ?? ps.word}</Text>
             </Text>
             <Text style={styles.tipText}>{ps.tip}</Text>
           </View>

@@ -87,12 +87,13 @@ export const PhonemeBreakdown = memo(function PhonemeBreakdown({ wordResults }: 
 
   return (
     <View style={styles.container}>
-      {wordResults.filter(w => w.status !== "missing").map((word, wi) => (
+      {wordResults
+        .filter(w => w.status !== "missing" && w.phonemes.length > 0)
+        .slice()
+        .sort((a, b) => (a.spokenIndex ?? Infinity) - (b.spokenIndex ?? Infinity))
+        .map((word, wi) => (
         <View key={`${word.word}-${wi}`} style={styles.wordGroup}>
-          <Text style={styles.wordLabel}>{word.word}</Text>
-          {word.actualWord && (
-            <Text style={styles.actualWordLabel}>you said: {word.actualWord}</Text>
-          )}
+          <Text style={styles.wordLabel}>{word.actualWord ?? word.word}</Text>
           <View style={styles.phonemeRow}>
             {word.phonemes.map((ph, pi) => {
               const idx = pillIndex++;

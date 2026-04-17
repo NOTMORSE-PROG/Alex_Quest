@@ -48,6 +48,7 @@ interface WordMatch {
   actualWord: string | null; // null = missing
   isMatch: boolean;
   whisperConfidence: number;
+  spokenIndex?: number;
 }
 
 /**
@@ -81,6 +82,7 @@ function matchWords(
         actualWord: segments[bestIdx].word,
         isMatch: true,
         whisperConfidence: segments[bestIdx].confidence,
+        spokenIndex: bestIdx,
       };
     }
 
@@ -93,6 +95,7 @@ function matchWords(
           actualWord: segments[i].word,
           isMatch: false,
           whisperConfidence: segments[i].confidence,
+          spokenIndex: i,
         };
       }
     }
@@ -110,7 +113,7 @@ function matchWords(
 // ── Score a Single Word ──────────────────────────────────────────────
 
 function scoreWord(match: WordMatch): WordResult {
-  const { expectedWord, actualWord, isMatch, whisperConfidence } = match;
+  const { expectedWord, actualWord, isMatch, whisperConfidence, spokenIndex } = match;
 
   // Missing word
   if (!actualWord) {
@@ -146,6 +149,7 @@ function scoreWord(match: WordMatch): WordResult {
         status: pronScore >= 70 ? "correct" : "substitution",
       })),
       whisperConfidence,
+      spokenIndex,
     };
   }
 
@@ -161,14 +165,24 @@ function scoreWord(match: WordMatch): WordResult {
   const actualPhonemes = lookupWord(actualWord)?.[0] ?? [];
 
   if (expectedPhonemes.length === 0 || actualPhonemes.length === 0) {
-    // Dictionary miss — fall back to word-level scoring
+    // Dictionary miss — show expected phonemes colored by word-level confidence
+    // so the word still appears in the breakdown (rather than vanishing)
+    const fallbackScore = Math.round(confidenceToPronunciationScore(whisperConfidence) * 0.4);
+    const fallbackPhonemes = expectedPhonemes.map(p => ({
+      phoneme: toIPA(p),
+      arpabet: p,
+      qualityScore: fallbackScore,
+      status: "substitution" as const,
+      tip: getTip(p),
+    }));
     return {
       word: expectedWord,
       actualWord: actualWordLabel,
-      qualityScore: 20,
+      qualityScore: fallbackScore,
       status: "mispronounced",
-      phonemes: [],
+      phonemes: fallbackPhonemes,
       whisperConfidence,
+      spokenIndex,
     };
   }
 
@@ -225,6 +239,7 @@ function scoreWord(match: WordMatch): WordResult {
     status: avgScore >= 70 ? "correct" : "mispronounced",
     phonemes: phonemeResults,
     whisperConfidence,
+    spokenIndex,
   };
 }
 
@@ -366,6 +381,7 @@ function extractProblemSounds(wordResults: WordResult[]): ProblemSound[] {
           soundMostLike: pr.soundMostLike ?? "—",
           tip: pr.tip ?? getTip(pr.arpabet),
           word: wr.word,
+          actualWord: wr.actualWord,
         });
       }
     }
@@ -429,18 +445,28 @@ export function assessAnswer(
   const wordResults = matches.map(scoreWord);
 
   // ── Add extra words (said but not expected) ──
-  const usedActual = new Set(matches.filter((m) => m.actualWord).map((m) => normalize(m.actualWord!)));
-  for (const seg of whisperResult.segments) {
-    if (!usedActual.has(normalize(seg.word))) {
+  const usedIndices = new Set(
+    wordResults.filter(w => w.spokenIndex !== undefined).map(w => w.spokenIndex!)
+  );
+  whisperResult.segments.forEach((seg, segIdx) => {
+    if (!usedIndices.has(segIdx)) {
+      const phonemeKeys = lookupWord(seg.word)?.[0] ?? [];
+      const pronScore = confidenceToPronunciationScore(seg.confidence);
       wordResults.push({
         word: seg.word,
-        qualityScore: 0,
+        qualityScore: pronScore,
         status: "extra",
-        phonemes: [],
+        spokenIndex: segIdx,
+        phonemes: phonemeKeys.map(p => ({
+          phoneme: toIPA(p),
+          arpabet: p,
+          qualityScore: pronScore,
+          status: "correct" as const,
+        })),
         whisperConfidence: seg.confidence,
       });
     }
-  }
+  });
 
   // ── Compute sub-scores ──
   const { score: contentScore, feedback: contentFeedback } =

@@ -49,6 +49,8 @@ export interface WordResult {
   stressCorrect?: boolean;
   /** Whisper's per-word confidence for this word (0-1) */
   whisperConfidence?: number;
+  /** Position of this word in the spoken transcript (for display ordering) */
+  spokenIndex?: number;
 }
 
 // ── Problem Sound ────────────────────────────────────────────────────
@@ -60,8 +62,10 @@ export interface ProblemSound {
   soundMostLike: string;
   /** How to fix it (kid-friendly language) */
   tip: string;
-  /** Which word this occurred in */
+  /** Which expected word this occurred in */
   word: string;
+  /** What the student actually said — only set when it differs from `word` */
+  actualWord?: string;
 }
 
 // ── Reflection ───────────────────────────────────────────────────────

@@ -118,53 +118,97 @@ export function generateReflection(
   };
 }
 
-// ── Strengths ──────────────────────────────────────────────────���─────
+// ── Strengths ────────────────────────────────────────────────────────
 
 function generateStrengths(result: AssessmentResult): string[] {
   const strengths: string[] = [];
   const { wordResults, contentScore, pronunciationScore } = result;
 
-  // Always find at least one positive thing
   const correctWords = wordResults.filter(
     (w) => w.status === "correct" && w.qualityScore >= 80
   );
 
+  // Content score tier
   if (contentScore >= 90) {
-    strengths.push("You said all the right words!");
-  } else if (contentScore >= 60) {
-    strengths.push("You got most of the words right!");
+    strengths.push(pick([
+      "You said all the right words!",
+      "Every word was exactly right — great job!",
+      "You nailed the whole sentence!",
+      "Perfect word choice — you got them all!",
+    ]));
+  } else if (contentScore >= 70) {
+    strengths.push(pick([
+      "You got most of the words right!",
+      "Almost the full sentence — really close!",
+      "Most of your words were spot on!",
+      "You said the majority of the sentence correctly!",
+    ]));
+  } else if (contentScore >= 50) {
+    strengths.push(pick([
+      "You got some of the words right!",
+      "A few of your words matched — keep going!",
+      "You're on the right track with some words!",
+    ]));
   }
 
-  if (pronunciationScore >= 85) {
-    strengths.push("Your pronunciation was very clear!");
+  // Pronunciation quality
+  if (pronunciationScore >= 90) {
+    strengths.push(pick([
+      "Your pronunciation was excellent!",
+      "Your sounds were super clear!",
+      "You spoke very clearly — great pronunciation!",
+      "Your mouth movements were spot on!",
+    ]));
+  } else if (pronunciationScore >= 75) {
+    strengths.push(pick([
+      "Your pronunciation was pretty clear!",
+      "Most of your sounds came out really well!",
+      "Nice and clear speech overall!",
+    ]));
   }
 
-  if (correctWords.length > 0) {
-    const examples = correctWords
-      .slice(0, 2)
-      .map((w) => `"${w.word}"`)
-      .join(" and ");
-    strengths.push(`You pronounced ${examples} well!`);
+  // Specific correct words highlight
+  if (correctWords.length >= 2) {
+    const examples = correctWords.slice(0, 2).map((w) => `"${w.word}"`).join(" and ");
+    strengths.push(pick([
+      `You pronounced ${examples} really well!`,
+      `Great job on ${examples}!`,
+      `${examples} sounded clear and correct!`,
+      `You nailed the words ${examples}!`,
+    ]));
+  } else if (correctWords.length === 1) {
+    const w = correctWords[0].word;
+    strengths.push(pick([
+      `You pronounced "${w}" really well!`,
+      `"${w}" sounded great!`,
+      `Nice work on the word "${w}"!`,
+    ]));
   }
 
-  // Find well-pronounced phonemes
+  // Well-pronounced phonemes
   const goodPhonemes = wordResults
     .flatMap((w) => w.phonemes)
     .filter((p) => p.status === "correct" && p.qualityScore >= 85);
   if (goodPhonemes.length >= 3 && strengths.length < 2) {
     const uniqueSounds = [...new Set(goodPhonemes.map((p) => p.phoneme))].slice(0, 3);
-    strengths.push(`Your ${uniqueSounds.join(", ")} sounds were clear!`);
+    strengths.push(pick([
+      `Your ${uniqueSounds.join(", ")} sounds were really clear!`,
+      `The ${uniqueSounds.join(", ")} sounds came out great!`,
+      `Nice work on the ${uniqueSounds.join(", ")} sounds!`,
+    ]));
   }
 
-  // Guarantee at least one strength
+  // Fallback — always guarantee at least one strength
   if (strengths.length === 0) {
-    strengths.push(
-      pick([
-        "You tried — that takes courage!",
-        "You're making an effort, and that's what matters!",
-        "Good try! Every attempt makes you better!",
-      ])
-    );
+    strengths.push(pick([
+      "You tried — that takes courage!",
+      "You're making an effort, and that's what matters!",
+      "Good try! Every attempt makes you better!",
+      "Brave attempt! Keep going!",
+      "You showed up and tried — that's the first step!",
+      "It's not easy, but you're doing it! Keep going!",
+      "Practice makes perfect — you're on your way!",
+    ]));
   }
 
   return strengths.slice(0, 3);
@@ -176,30 +220,61 @@ function generateAreasToImprove(result: AssessmentResult, storyHint?: string): s
   const areas: string[] = [];
   const { problemSounds, wordResults, contentScore } = result;
 
-  // Content issues first — gate target-word reveal to hintLevel >= 2 (3rd+ attempt)
+  // Content issues — gate target-word reveal to hintLevel >= 2 (3rd+ attempt)
   const missingWords = wordResults.filter((w) => w.status === "missing");
   if (missingWords.length > 0 && contentScore < 80) {
     if (result.hintLevel >= 2) {
-      areas.push(`Make sure to include "${missingWords[0].word}" in your answer`);
+      const mw = missingWords[0].word;
+      areas.push(pick([
+        `Make sure to include "${mw}" in your answer`,
+        `Don't forget to say "${mw}"`,
+        `Try adding the word "${mw}" to your sentence`,
+        `"${mw}" was missing — try to work it in!`,
+      ]));
     } else {
-      areas.push(storyHint ? `Think about the story — ${storyHint}` : "Try to say the complete sentence clearly");
+      areas.push(storyHint
+        ? pick([
+            `Think about the story — ${storyHint}`,
+            `Use the story as a hint — ${storyHint}`,
+          ])
+        : pick([
+            "Try to say the complete sentence clearly",
+            "Make sure you say every part of the sentence",
+            "Try including all the words in your answer",
+            "Think through the full sentence before you speak",
+          ])
+      );
     }
   }
 
   // Pronunciation issues — specific phoneme tips
   for (const ps of problemSounds.slice(0, 2)) {
+    const displayWord = ps.actualWord ?? ps.word;
     if (ps.soundMostLike && ps.soundMostLike !== "—") {
-      areas.push(
-        `Practice the ${ps.phoneme} sound in "${ps.word}" — ${ps.tip}`
-      );
+      areas.push(pick([
+        `Practice the /${ps.phoneme}/ sound in "${displayWord}" — ${ps.tip}`,
+        `The /${ps.phoneme}/ in "${displayWord}" needs work — ${ps.tip}`,
+        `Work on the /${ps.phoneme}/ sound: ${ps.tip}`,
+        `In "${displayWord}", focus on the /${ps.phoneme}/ — ${ps.tip}`,
+      ]));
     } else {
-      areas.push(`Practice the ${ps.phoneme} sound — ${ps.tip}`);
+      areas.push(pick([
+        `Practice the /${ps.phoneme}/ sound — ${ps.tip}`,
+        `Work on your /${ps.phoneme}/ — ${ps.tip}`,
+        `The /${ps.phoneme}/ sound needs attention — ${ps.tip}`,
+      ]));
     }
   }
 
-  // General pronunciation tip if no specific phonemes identified
+  // General pronunciation tip when no specific phonemes flagged
   if (areas.length === 0 && result.pronunciationScore < 80) {
-    areas.push("Try speaking more slowly and clearly");
+    areas.push(pick([
+      "Try speaking more slowly and clearly",
+      "Slow down a little and focus on each sound",
+      "Say each word carefully — don't rush",
+      "Take a breath and say each word one at a time",
+      "Try exaggerating your mouth movements a bit more",
+    ]));
   }
 
   return areas.slice(0, 3);
@@ -210,31 +285,60 @@ function generateAreasToImprove(result: AssessmentResult, storyHint?: string): s
 function generatePracticeExercise(result: AssessmentResult): string {
   const { problemSounds, wordResults, contentScore } = result;
 
-  // If content was wrong, suggest full sentence practice
-  // Only mention "Listen to the correct answer" once the Listen button is available (hintLevel >= 2)
+  // Content was wrong — suggest sentence-level practice
   if (contentScore < 60) {
-    return result.hintLevel >= 2
-      ? "Listen to the correct answer, then try saying the whole sentence slowly"
-      : "Try saying the whole sentence again, slowly and clearly";
+    if (result.hintLevel >= 2) {
+      return pick([
+        "Listen to the correct answer, then try saying the whole sentence slowly",
+        "Play the correct version, then repeat it word by word",
+        "Listen once, then say the sentence back slowly and clearly",
+        "Try echoing the correct answer — listen, then repeat it out loud",
+      ]);
+    }
+    return pick([
+      "Try saying the whole sentence again, slowly and clearly",
+      "Take your time and say every word of the sentence",
+      "Say it again — go slow and think about each word",
+      "Try once more, one word at a time",
+      "Breathe, then say the full sentence slowly",
+    ]);
   }
 
-  // If specific phoneme problem, isolate the word
+  // Specific phoneme problem — isolate the word
   if (problemSounds.length > 0) {
     const ps = problemSounds[0];
-    return `Try saying just the word "${ps.word}" three times slowly: "${ps.word}... ${ps.word}... ${ps.word}..."`;
+    const pw = ps.actualWord ?? ps.word;
+    return pick([
+      `Try saying just the word "${pw}" three times slowly: "${pw}… ${pw}… ${pw}…"`,
+      `Repeat the word "${pw}" out loud three times, nice and slow`,
+      `Say "${pw}" by itself a few times — really focus on each sound`,
+      `Isolate the word "${pw}" and say it clearly three times`,
+      `Practice just "${pw}" — say it slowly, then a little faster each time`,
+    ]);
   }
 
-  // Pronunciation issues — find weakest word
+  // Weak mispronounced word — drill it
   const weakWords = wordResults
     .filter((w) => w.status === "mispronounced")
     .sort((a, b) => a.qualityScore - b.qualityScore);
 
   if (weakWords.length > 0) {
-    const word = weakWords[0].word;
-    return `Focus on the word "${word}" — say it slowly and clearly a few times`;
+    const word = weakWords[0].actualWord ?? weakWords[0].word;
+    return pick([
+      `Focus on the word "${word}" — say it slowly and clearly a few times`,
+      `Practice "${word}" by itself before saying the full sentence`,
+      `Say "${word}" slowly — stretch out each sound, then try the full sentence`,
+      `Repeat "${word}" three times, then say the whole sentence`,
+      `Zoom in on "${word}" — say it carefully, then add it back to the sentence`,
+    ]);
   }
 
-  return "Try the whole sentence again, speaking slowly and clearly";
+  return pick([
+    "Try the whole sentence again, speaking slowly and clearly",
+    "One more time — take it slow and say every word clearly",
+    "Give it another go — slow and steady!",
+    "Try once more, and focus on each word as you say it",
+  ]);
 }
 
 // ── Encouragement ────────────────────────────────────────────────────
@@ -249,7 +353,11 @@ function generateEncouragement(
     return pick([
       "You did it! Keep up the great work!",
       "Fantastic job! You're getting really good at this!",
-      "Well done! You should be proud!",
+      "Well done! You should be proud of yourself!",
+      "Amazing! You crushed it!",
+      "You passed! That hard work is paying off!",
+      "Brilliant! Keep that energy going!",
+      "Yes! You nailed it — great effort!",
     ]);
   }
 
@@ -258,6 +366,9 @@ function generateEncouragement(
     return pick([
       "Don't give up — you're so close! Listen to the answer one more time.",
       "You're learning with every try. One more attempt!",
+      "You've got this — persistence is how champions learn!",
+      "So close! Give it one more shot — you can do it!",
+      "Every attempt is making you stronger. Try again!",
     ]);
   }
 
@@ -265,22 +376,33 @@ function generateEncouragement(
     if (overallScore >= 60) {
       return pick([
         `You scored ${overallScore}% — almost there! You need 80% to pass.`,
-        `Getting closer! ${80 - overallScore} more points and you've got it!`,
+        `Getting closer! Just ${80 - overallScore} more points and you've got it!`,
         "You're improving! Try one more time!",
+        `${overallScore}% — so close to passing! One more try!`,
+        "You're nearly there — keep pushing!",
       ]);
     }
     return pick([
       "Keep practicing! Listen carefully and try again.",
       "Every try makes you better. You've got this!",
+      "Don't stop now — you're learning with every attempt!",
+      "Stay with it — practice is how you get great at this!",
     ]);
   }
 
   // First attempt
   if (overallScore >= 60) {
-    return `Good first try! You scored ${overallScore}% — need 80% to pass. You're close!`;
+    return pick([
+      `Good first try! You scored ${overallScore}% — need 80% to pass. You're close!`,
+      `Nice start! ${overallScore}% on your first go — just a little more!`,
+      `Great first attempt! A bit more practice and you'll pass!`,
+    ]);
   }
   return pick([
     "No worries! Take your time and try again.",
     "Learning takes practice. Think carefully and give it another go!",
+    "That's okay! Every first try teaches you something.",
+    "Keep going — you'll get there with practice!",
+    "Don't worry, just try again — you're still learning!",
   ]);
 }
