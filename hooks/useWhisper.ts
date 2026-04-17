@@ -328,16 +328,21 @@ async function transcribeImpl(
       temperature: 0,
       temperatureInc: 0,
       beamSize: 5,
-      // Permissive mode for short identify answers — looser thresholds so
-      // single-syllable words like "no" / "yes" aren't classified as silence.
-      // noSpeechThold semantics: "skip segment if P(no_speech) > threshold"
-      //   0.6 = whisper.cpp default — only skips obvious silence → best for short yes/no
-      //   0.5 = standard mode (raised from 0.4) — accepts softer voices that
-      //         whisper previously rejected as "no speech". Lower = more aggressive.
-      // logprobThold raised from -0.7 → -0.9 to accept lower-confidence tokens
-      //   from quiet speakers without discarding the segment.
-      noSpeechThold: userOpts.permissive ? 0.6 : 0.5,
-      logprobThold: userOpts.permissive ? -1.0 : -0.9,
+      // Permissive mode (identify yes/no) stays loose — single-syllable answers
+      // need looser thresholds to avoid being classified as silence.
+      // Standard mode is strict so mumbled / very-quiet audio is rejected at
+      // the Whisper layer (empty transcript → no-speech UI → retry). This
+      // prevents Whisper from best-effort-transcribing unclear speech into a
+      // confident-looking "wrong answer."
+      //
+      // noSpeechThold: "skip segment if P(no_speech) > threshold"
+      //   0.6 = whisper.cpp default — tolerant; good for short yes/no
+      //   0.4 = strict — rejects more borderline-silence segments
+      // logprobThold: discard segment if avg token logprob is below this
+      //   -1.0 = whisper.cpp default — tolerant; good for yes/no
+      //   -0.7 = strict — rejects low-confidence transcriptions
+      noSpeechThold: userOpts.permissive ? 0.6 : 0.4,
+      logprobThold: userOpts.permissive ? -1.0 : -0.7,
       suppressNonSpeechTokens: true,
     };
     if (offsetMs > 0) opts.offset = offsetMs;

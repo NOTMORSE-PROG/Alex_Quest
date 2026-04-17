@@ -90,6 +90,9 @@ export const PhonemeBreakdown = memo(function PhonemeBreakdown({ wordResults }: 
       {wordResults.filter(w => w.status !== "missing").map((word, wi) => (
         <View key={`${word.word}-${wi}`} style={styles.wordGroup}>
           <Text style={styles.wordLabel}>{word.word}</Text>
+          {word.actualWord && (
+            <Text style={styles.actualWordLabel}>you said: {word.actualWord}</Text>
+          )}
           <View style={styles.phonemeRow}>
             {word.phonemes.map((ph, pi) => {
               const idx = pillIndex++;
@@ -124,6 +127,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: `${colors.navy}80`,
     textTransform: "lowercase",
+  },
+  actualWordLabel: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 10,
+    color: colors.warning,
+    textTransform: "lowercase",
+    fontStyle: "italic",
   },
   phonemeRow: {
     flexDirection: "row",

@@ -357,7 +357,7 @@ export default function ChapterPage() {
         setAnalyzePhase("transcribing");
         const thinkingTimerB = setTimeout(() => setAnalyzePhase("thinking"), 15_000);
         transcribeStartMs = Date.now();
-        const whisperResult = await transcribeWithTimeout(audioUri, { prompt: expected });
+        const whisperResult = await transcribeWithTimeout(audioUri);
         clearTimeout(thinkingTimerB);
         console.log(`${TAG} Whisper elapsed=${Date.now() - transcribeStartMs}ms`);
 
@@ -420,8 +420,10 @@ export default function ChapterPage() {
     // The normal fuzzy scorer allows 1-char edit distance, so "fells" ≈ "falls"
     // and the student would pass even with the wrong verb form. We re-check the
     // blank word(s) strictly (exact + suffix inflections only, no edit distance).
-    // Non-blank words (subject nouns, etc.) remain fuzzy — a student who says
-    // "The skink is collecting food" still passes because the blank "is" is right.
+    // Non-blank words (subject nouns, etc.) remain fuzzy on purpose — a near
+    // mishear like "skink" for "skunk" still counts as a content hit (the
+    // student advances) but the pronunciation score drops and the problem
+    // sound is surfaced via phoneme alignment in the feedback UI.
     if (
       currentQ.type === "build" &&
       currentQ.blank &&

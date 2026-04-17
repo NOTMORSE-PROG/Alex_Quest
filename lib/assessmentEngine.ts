@@ -149,7 +149,14 @@ function scoreWord(match: WordMatch): WordResult {
     };
   }
 
-  // Words differ — run phoneme alignment to find specific differences
+  // Words differ — run phoneme alignment to find specific differences.
+  // actualWord is surfaced on the result so the breakdown UI can show
+  // "you said: X" alongside the expected word — covers near-mishears
+  // ("skink" for "skunk") that pass content-wise via wordsClose but are
+  // still the wrong word, and out-of-dictionary utterances.
+  const normalizedActual = normalize(actualWord);
+  const actualWordLabel =
+    normalizedActual !== normalize(expectedWord) ? normalizedActual : undefined;
   const expectedPhonemes = lookupWord(expectedWord)?.[0] ?? [];
   const actualPhonemes = lookupWord(actualWord)?.[0] ?? [];
 
@@ -157,6 +164,7 @@ function scoreWord(match: WordMatch): WordResult {
     // Dictionary miss — fall back to word-level scoring
     return {
       word: expectedWord,
+      actualWord: actualWordLabel,
       qualityScore: 20,
       status: "mispronounced",
       phonemes: [],
@@ -212,6 +220,7 @@ function scoreWord(match: WordMatch): WordResult {
 
   return {
     word: expectedWord,
+    actualWord: actualWordLabel,
     qualityScore: Math.round(avgScore),
     status: avgScore >= 70 ? "correct" : "mispronounced",
     phonemes: phonemeResults,
@@ -237,9 +246,13 @@ function editDistance(a: string, b: string): number {
 }
 
 /**
- * Returns true when two normalized words are close enough to count as a match.
- * Covers common inflections (-s/-es/-ing/-ed) and 1-char edit distance for
- * words of length ≥ 4 (short stop words like "a"/"an" are kept strict).
+ * Returns true when two normalized words are close enough to count as a match
+ * for *content* scoring (did the student say the right answer?). Covers
+ * inflections (-s/-es/-ing/-ed) and 1-char edit distance on 4+ char words so
+ * near-mishears like "skink"/"skunk" still count as a content hit and the
+ * answer can advance. Pronunciation quality is scored separately: matchWords
+ * uses exact equality, so a near-mishear still triggers phoneme alignment
+ * and lowers the pronunciation score with the problem-sound surfaced.
  */
 function wordsClose(a: string, b: string): boolean {
   if (a === b) return true;
@@ -364,17 +377,15 @@ function extractProblemSounds(wordResults: WordResult[]): ProblemSound[] {
 // ── Pass Threshold ───────────────────────────────────────────────────
 
 /**
- * Minimum content score required to pass, adjusted for sentence length.
- * The flat 80% rule is degenerate for short sentences: 4 words × 80% = 3.2,
- * so ALL 4 words must match. We allow 1 miss for sentences of 3-5 words.
- * Sentences of 6+ words use the standard 80%.
- *
- * Results: 3w→67%, 4w→75%, 5w→80%, 6+w→80%
+ * Minimum content score required to pass. Every expected word must have a
+ * `wordsClose` match (exact, suffix-inflected, or 1-char edit distance on
+ * 4+ char words). That tolerance already gives grace for near-mishears like
+ * "skink" for "skunk" — an additional "miss 1 word" threshold on top of it
+ * let students skip the target vocabulary entirely (e.g. "the skin is
+ * collecting food" — skunk dropped — passed at 80%).
  */
-function contentPassThreshold(wordCount: number): number {
-  if (wordCount <= 2) return 100;
-  if (wordCount <= 5) return Math.ceil(((wordCount - 1) / wordCount) * 100);
-  return 80;
+function contentPassThreshold(_wordCount: number): number {
+  return 100;
 }
 
 // ── Main Assessment Function (Whisper) ───────────────────────────────
@@ -470,12 +481,14 @@ export function assessAnswer(
   const problemSounds = extractProblemSounds(wordResults);
 
   // ── Pronunciation feedback ──
+  // Thresholds aligned with per-word `status` cutoff of 70 (scoreWord lines
+  // 141 & 216): a score ≥ 70 is labelled "correct", below 70 is "mispronounced".
   const pronunciationFeedback =
     pronunciationScore >= 90
       ? "Your pronunciation was excellent!"
-      : pronunciationScore >= 75
+      : pronunciationScore >= 70
         ? "Good pronunciation! A few sounds could be clearer."
-        : pronunciationScore >= 60
+        : pronunciationScore >= 50
           ? "Some sounds need practice. Check the tips below!"
           : "Let's work on pronunciation. Listen to the correct version and try again.";
 

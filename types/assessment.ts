@@ -32,8 +32,13 @@ export interface SyllableResult {
 }
 
 export interface WordResult {
-  /** The word text */
+  /** The expected word text */
   word: string;
+  /** What the student actually said — only set when it differs from `word`
+   *  (e.g. expected "skunk" but Whisper heard "skin"). Used by the phoneme
+   *  breakdown UI so the student can see their actual utterance alongside
+   *  the target. */
+  actualWord?: string;
   /** Quality score 0-100 (average of phoneme scores or confidence-based) */
   qualityScore: number;
   /** What happened with this word */
